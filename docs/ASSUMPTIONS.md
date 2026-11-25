@@ -67,4 +67,62 @@ is recorded here as soon as it is made.
 20. **Bench staff with no assignments** (the backup pool) are shown as "Available (backup pool)" in the
     employee view, not as blank (UI, P4).
 
+## Scheduling engine (P2)
+
+21. **Planning window.** The roster for month M stores one entry per active employee for every date of every
+    Mon-Sun week touching M (December 2026 is 30 Nov to 3 Jan, 35 days). Entries dated outside M are
+    **spill entries**; the date being outside `roster.month` is the flag (no schema change). Coverage and
+    per-day rules are validated for in-month dates only. Weekly offs for a week M owns are validated over
+    the whole week.
+22. **Boundary-week mechanism** (binding, from the P1 review; tests S16 to S18). (a) A neighbouring month's roster
+    (latest version, any status) supplies locked entries for M's spill dates. (b) With no neighbour roster, M
+    plans its spill dates itself, provisionally, and owes no weekly off for a week it does not own. (c) When M+1
+    is generated, any `WEEKLY_OFF` spill entry in M's roster that serves an M-owned week is carried into M+1 as
+    `locked: true, source: AUTO` with the note "carried from M" (unless approved leave covers that day). (d) If
+    M needs an off on a spill date the neighbour has locked or published as WORK, M never overwrites it: it raises
+    `WEEKLY_OFF_NOT_GRANTED` whose message names the locked date and whose `SWAP_OFF_DAY` suggestion names the
+    neighbour-month date to change. A suggestion on a spill date is only offered if that date stays covered.
+23. **Public holidays.** A holiday is `HOLIDAY` for everyone not needed. Needed people are chosen to meet each
+    operating brand-process's requirement, PRIMARY first, then by fewest holidays worked so far (rotation), then
+    id. Whoever works one earns a comp-off credit (`COMP_OFF_EARNED`, INFO; counted for in-month holidays only).
+    Approved leave on a public holiday is `HOLIDAY`, not `LEAVE`, so the holiday is not charged against the leave.
+    A contract-fixed off day beats a public holiday (`WEEKLY_OFF`).
+24. **A holiday does not replace the weekly off, but may host it.** The generator prefers to give both. If the only
+    free day in a week is a holiday (a brand closed on Sundays with a Sunday holiday), the holiday becomes
+    `WEEKLY_OFF` rather than raising a false error. A week with only `HOLIDAY` and no `WEEKLY_OFF` is still reported
+    by the validator.
+25. **Weekly-off placement.** Week by week, most-constrained employee first (fewest substitutes across their PRIMARY
+    brand-processes, then id). A day scores: +1000 for each person it would leave short even after backups; +1 if
+    one of their brand-processes operates; -5 preferred weekday; +3 per Sunday off already given when Sunday is an
+    operating day (rotation); +4 on a public holiday; +2 on a spill date; +2 per colleague sharing a brand-process
+    already away; +10 per day their working run is already past their limit; -20 for the day the previous draft used
+    (so a re-plan changes little). Lowest wins, earliest date breaks ties. A best score of 1000 or more means the
+    off is **not granted**; coverage beats a weekly off, and the validator reports it.
+26. **Backup fill.** A short brand-process pulls in an assignee who is working that day (PRIMARY first, then same pod,
+    then lowest load) if their load stays at most 100% and the earliest-start-to-latest-end span of everything they
+    cover stays within `maxDailyHours`. A person on a public holiday without approved leave may be called in, ranked
+    last, and then earns a comp-off.
+27. **Issue scope and definitions.** `CASCADE_GAP` = one person who is not working and is PRIMARY on short
+    brand-processes in two or more brands that day; the underlying `COVERAGE_GAP`s stay and are listed in
+    `groupedIssueIds`. `SHIFT_INCOMPATIBLE` = covered shifts span more than `maxDailyHours`, or overlapping shifts of
+    different brands exceed 100% allocation; `OVERALLOCATED` (warning) is reported only when that is not already the
+    case. `PREFERRED_OFF_NOT_HONOURED` and `PENDING_LEAVE_CONFLICT` fire only when the person is genuinely needed:
+    removing them leaves a brand-process short even after backups (including people who could be called in on a
+    holiday). `NO_ELIGIBLE_STAFF` replaces the per-day gaps for a brand-process nobody is assigned to.
+28. **Suggestions** carry concrete cell edits and are pre-validated: applying one to a copy of the roster must add no
+    new ERROR and must resolve its own issue. They are ranked by fewest new warnings, then same pod, then lowest load.
+    A suggestion never undoes a locked cell. `REASSIGN_FROM_POD` proposes a manager-approved temporary assignment
+    from the brand's pod. `ACCEPT_GAP` is always available for an ERROR. Applying a suggestion marks its cells
+    `MANUAL` and locked.
+29. **Re-planning after a change** (`simulateChange`) pins every entry outside the affected Mon-Sun weeks, every entry
+    before `today`, and every locked entry; it re-plans only the affected weeks and reuses last time's weekly-off day
+    where it can. It returns the new roster, the changed cells and the issue delta without saving anything.
+30. **S03, read literally, cannot happen:** with three people, one leave leaves two and cannot break a minimum of 2.
+    The test therefore also uses the case the assessment means (seeded as Orbit Electronics): a second simultaneous
+    leave. The one-leave halves are asserted too.
+31. **Known limit of the greedy planner.** It can leave a working run slightly over `maxConsecutiveDays`
+    (`CONSECUTIVE_DAYS_EXCEEDED`, a warning), typically when a colleague's off day forces a backup to work through.
+    It never trades coverage for it. The dry-run shows these. Fixing it properly would need look-ahead or a
+    repair pass.
+
 _More assumptions are added per phase._

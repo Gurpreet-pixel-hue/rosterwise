@@ -3,15 +3,15 @@
 Source of truth for scope: `AI_Internship Assessment.pdf` (git-ignored) and `CLAUDE.md`.
 PDF/CLAUDE.md mismatches found so far: none.
 
-| Phase                           | Status         | Gate request                 | Review                      |
-| ------------------------------- | -------------- | ---------------------------- | --------------------------- |
-| P0 Scaffold                     | PASS           | `docs/reviews/REQUEST-P0.md` | `docs/reviews/REVIEW-P0.md` |
-| P1 Data model + seed            | PASS (round 2) | `docs/reviews/REQUEST-P1.md` | `docs/reviews/REVIEW-P1.md` |
-| P2 Engine                       | Not started    |                              |                             |
-| P3 Persistence & server actions | Not started    |                              |                             |
-| P4 UI                           | Not started    |                              |                             |
-| P5 Optional features            | Not started    |                              |                             |
-| P6 Deploy & docs                | Not started    |                              |                             |
+| Phase                           | Status                      | Gate request                 | Review                      |
+| ------------------------------- | --------------------------- | ---------------------------- | --------------------------- |
+| P0 Scaffold                     | PASS                        | `docs/reviews/REQUEST-P0.md` | `docs/reviews/REVIEW-P0.md` |
+| P1 Data model + seed            | PASS (round 2)              | `docs/reviews/REQUEST-P1.md` | `docs/reviews/REVIEW-P1.md` |
+| P2 Engine                       | Built, awaiting Opus review | `docs/reviews/REQUEST-P2.md` | pending                     |
+| P3 Persistence & server actions | Not started                 |                              |                             |
+| P4 UI                           | Not started                 |                              |                             |
+| P5 Optional features            | Not started                 |                              |                             |
+| P6 Deploy & docs                | Not started                 |                              |                             |
 
 ## Decisions log
 
@@ -30,3 +30,6 @@ PDF/CLAUDE.md mismatches found so far: none.
 - **Reviewer's P1 pointers applied:** single-resource definition printed with the %, string dates, unique `Assignment(employeeId, brandProcessId)` and `BrandProcess(brandId, processId)`, idempotent seed.
 - **Schema vs section 3:** exactly per section 3. `RosterEntry` has an extra `(rosterId, date)` index for per-day views. `(brandProcessId, date)` is the unique key on `CoverageOverride`. Issue acknowledgements (`acknowledgeIssue`, P3) are not in section 3 and will be added in P3 if needed.
 - **P1 review round 1:** all six findings fixed (see "Response to review" in `REQUEST-P1.md`). `calendar.ts`, `demand.ts` and `types.ts` were written in P1 (not P2) so the seed's feasibility check and the engine share one calendar. The new check also exposed a boundary-week problem the review had not predicted; see ASSUMPTIONS 18.
+- **P1 passed and pushed:** CI green on `0783e84` ([run 45656871590](https://github.com/Gurpreet-pixel-hue/rosterwise/actions/runs/45656871590)).
+- **P2 additions beyond the plan:** `src/server/buildEngineInput.ts` (pure row-to-input mapping shared by the DB loader, the CLI and tests), `src/engine/{analyze,edit,change,ids,ctx,state}.ts`, an ESLint rule that keeps `src/engine/**` free of Prisma, Next.js, Node I/O and `process`, and an engine-purity test.
+- **Tests S16 to S18** (boundary week) were added to S01 to S15 as the P1 review required.
