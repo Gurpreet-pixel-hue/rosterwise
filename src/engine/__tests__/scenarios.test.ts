@@ -20,9 +20,35 @@ import {
   offDates,
   primary,
 } from "./fixtures";
+import { coverageShortfalls, hasPlainFreeDay, missingWeeklyOffs } from "./oracle";
 import { seedInput } from "./seedInput";
 
 const DEC = monthDates("2026-12");
+
+/**
+ * Holiday-hosted weekly offs that are unavoidable (ASSUMPTIONS 24). All five are Sun 6 Dec, a public
+ * holiday on a Sunday:
+ *  - Aarav, Kabir, Priya, Gaurav: sole cover for a brand closed on Sundays and with no backup
+ *    (Lumen/Verdant, Orchid Home, Indigo Denim, Pixel Pets), so Mon-Sat are all needed and the
+ *    Sunday holiday is the only free day. (Kabir's contract-fixed Sunday is also the holiday.)
+ *  - Siddharth: his contract-fixed Sunday off lands on the holiday, but other days are free, so he also gets a real off on 1 Dec,
+ *    so he does not lose the holiday.
+ */
+const EXPECTED_HOSTED: string[] = [
+  "emp-aarav-sharma@2026-12-06",
+  "emp-gaurav-chopra@2026-12-06",
+  "emp-kabir-singh@2026-12-06",
+  "emp-priya-nair@2026-12-06",
+  "emp-siddharth-jain@2026-12-06",
+];
+/**
+ * Employees whose over-limit run genuinely cannot be repaired, by name, with the reason (S20).
+ * Arjun Nambiar, 19-25 Jan 2027: Orbit Electronics (3 people sharing a minimum of 2, so at most one is
+ * off a day) around the 26 Jan holiday, which still needs 2 working. Moving his own off only trades one
+ * 7-day run for another, 25 Jan is Pooja's off, and rotating all three pushes Sneha (sick on 20 Jan)
+ * over her limit. Fixing it needs re-planning the three together across several weeks.
+ */
+const UNREPAIRABLE: string[] = ["emp-arjun-nambiar"];
 const inDec = (d: string) => d.startsWith("2026-12");
 const ids = (issues: Issue[]) => issues.map((i) => i.id).sort();
 
@@ -441,6 +467,66 @@ describe("engine scenarios", () => {
         expect(belongs, `${e.code}: ${e.message}`).toBe(true);
       }
     }
+
+    // ---- independent oracle (review finding 3): not RosterState, not ctx, not validate ----------
+    for (const [input, gen] of [
+      [dec, decGen],
+      [jan, janGen],
+    ] as const) {
+      const short = coverageShortfalls(input, gen.draft);
+      const gaps = issuesOf(gen.issues, "COVERAGE_GAP");
+      const noStaff = issuesOf(gen.issues, "NO_ELIGIBLE_STAFF");
+      // (a) every shortfall the oracle finds is reported ...
+      for (const s of short) {
+        const reported = s.noAssignees
+          ? noStaff.some((i) => i.brandProcessId === s.bpId)
+          : gaps.some((i) => i.brandProcessId === s.bpId && i.date === s.date);
+        expect(reported, `oracle shortfall ${s.bpId} ${s.date} not reported`).toBe(true);
+      }
+      // (b) ... and every reported gap is a real shortfall, with the same numbers
+      for (const g of gaps) {
+        const o = short.find((s) => s.bpId === g.brandProcessId && s.date === g.date);
+        expect(o, `reported gap ${g.message} is not a shortfall`).toBeDefined();
+        expect(g.message).toContain(`has ${o!.covering} of ${o!.required}`);
+      }
+      // (c) outside Nimbus Gadgets there is no coverage shortfall at all
+      const nimbus = new Set(
+        input.brandProcesses.filter((b) => b.brandName === "Nimbus Gadgets").map((b) => b.id),
+      );
+      expect(short.filter((s) => !nimbus.has(s.bpId))).toEqual([]);
+
+      // weekly offs, with the holiday rule applied: oracle's missing set == reported WEEKLY_OFF_NOT_GRANTED
+      const reported = new Set(
+        issuesOf(gen.issues, "WEEKLY_OFF_NOT_GRANTED").map((i) => `${i.employeeId}|${i.date}`),
+      );
+      expect([...missingWeeklyOffs(input, gen.draft)].sort()).toEqual([...reported].sort());
+    }
+
+    // The oracle is not vacuous: break a roster by hand and it, and the validator, both notice.
+    const broken = applyEdits(
+      decGen.draft,
+      [
+        {
+          employeeId: "emp-ishita-verma",
+          date: "2026-12-16",
+          status: "WEEKLY_OFF",
+          coveredBrandProcessIds: [],
+        },
+        {
+          employeeId: "emp-divya-menon",
+          date: "2026-12-16",
+          status: "WEEKLY_OFF",
+          coveredBrandProcessIds: [],
+        },
+      ],
+      { locked: true, source: "MANUAL" },
+    );
+    const oracle = coverageShortfalls(dec, broken).filter((s) => s.date === "2026-12-16");
+    const validator = issuesOf(validateRoster(dec, broken), "COVERAGE_GAP").filter(
+      (i) => i.date === "2026-12-16",
+    );
+    expect(oracle.length).toBeGreaterThanOrEqual(2); // Coastal Candles CS and ACC
+    expect(validator.map((i) => i.brandProcessId).sort()).toEqual(oracle.map((s) => s.bpId).sort());
   });
 
   it("S15 weekly offs: every employee gets >= weeklyOffsPerWeek in qualifying weeks unless an ERROR explains why", () => {
@@ -583,5 +669,124 @@ describe("engine scenarios", () => {
     expect(swap, JSON.stringify(issue.suggestions)).toBeDefined();
     expect(swap!.employeeId).toBe(aarav);
     expect(swap!.description).toContain("2027-01");
+  });
+
+  it("S19 holiday hosts a weekly off only when no other day is free (Gaurav: off on 2027-01-03, H on 2027-01-01; Aarav 2026-12-06 still allowed)", () => {
+    const dec = seedInput("2026-12");
+    const decGen = generateRoster(dec, { suggestions: false });
+    const jan = seedInput("2027-01", {
+      neighbourRosters: [{ month: "2026-12", status: "DRAFT", entries: decGen.draft.entries }],
+    });
+    const janGen = generateRoster(jan, { suggestions: false });
+    const gaurav = "emp-gaurav-chopra";
+    const aarav = "emp-aarav-sharma";
+
+    // Gaurav: Sun 3 Jan was free (Terra Organics is covered by backup Farhan), so the off goes there
+    // and New Year's Day stays a holiday. He used to lose the holiday.
+    expect(entry(decGen.draft, gaurav, "2027-01-03").status).toBe("WEEKLY_OFF");
+    expect(entry(decGen.draft, gaurav, "2027-01-01").status).toBe("HOLIDAY");
+    expect(entry(janGen.draft, gaurav, "2027-01-03")).toMatchObject({
+      status: "WEEKLY_OFF",
+      locked: true,
+    });
+    expect(entry(janGen.draft, gaurav, "2027-01-01").status).toBe("HOLIDAY");
+
+    // Aarav, 6 Dec: every other day of that week is needed (three Sunday-closed brands, two without a
+    // backup), so the Sunday holiday legitimately hosts the off, and nothing is reported.
+    expect(entry(decGen.draft, aarav, "2026-12-06").status).toBe("WEEKLY_OFF");
+    expect(
+      issuesOf(decGen.issues, "WEEKLY_OFF_NOT_GRANTED").filter((i) => i.employeeId === aarav),
+    ).toEqual([]);
+
+    // Across both months, every holiday-hosted off is one the independent oracle agrees was unavoidable.
+    const hosted: string[] = [];
+    for (const [input, gen] of [
+      [dec, decGen],
+      [jan, janGen],
+    ] as const) {
+      const ph = new Map(input.holidays.map((h) => [h.date, h.name]));
+      for (const e of gen.draft.entries.filter(
+        (x) => x.status === "WEEKLY_OFF" && ph.has(x.date),
+      )) {
+        const week = weeksOfMonth(input.month).find((w) => w.fullWeek.includes(e.date))!;
+        // Either the employee also got a real off that week (Siddharth: his fixed Sunday is the holiday,
+        // plus an off on 1 Dec), or the independent oracle agrees no other day was free (the rest,
+        // including Kabir, whose fixed Sunday is also the holiday but who is sole cover Mon-Sat).
+        const alsoHasPlainOff = gen.draft.entries.some(
+          (x) =>
+            x.employeeId === e.employeeId &&
+            x.status === "WEEKLY_OFF" &&
+            week.fullWeek.includes(x.date) &&
+            !ph.has(x.date),
+        );
+        expect(
+          alsoHasPlainOff || !hasPlainFreeDay(input, gen.draft, e.employeeId, week.fullWeek),
+          `${e.employeeId} off on ${e.date} (${ph.get(e.date)}) although another day was free`,
+        ).toBe(true);
+        hosted.push(`${e.employeeId}@${e.date}`);
+      }
+    }
+    // the carried 1 Jan entries are not counted twice: de-duplicate across the two drafts
+    expect([...new Set(hosted)].sort()).toEqual(EXPECTED_HOSTED);
+    // the validator reports no avoidable one in either month except Ananya's (Nimbus Gadgets) missing offs
+    for (const gen of [decGen, janGen]) {
+      expect(
+        new Set(issuesOf(gen.issues, "WEEKLY_OFF_NOT_GRANTED").map((i) => i.employeeId)),
+      ).toEqual(new Set(["emp-ananya-reddy"]));
+    }
+  });
+
+  it("S19b validator-only: an avoidable weekly off on a public holiday is WEEKLY_OFF_NOT_GRANTED, naming the holiday and the free day", () => {
+    const input = makeInput({
+      employees: [emp("A"), emp("B")],
+      brandProcesses: [bp("X")],
+      assignments: [primary("A", "X"), backup("B", "X")],
+      holidays: [{ date: "2026-12-25", name: "Christmas Day" }],
+    });
+    const { draft } = generateRoster(input, { suggestions: false });
+    const week = weeksOfMonth("2026-12").find((w) => w.fullWeek.includes("2026-12-25"))!;
+    const plainOff = week.fullWeek.find((d) => entry(draft, "A", d).status === "WEEKLY_OFF")!;
+    expect(plainOff).toBeDefined();
+    expect(plainOff).not.toBe("2026-12-25");
+    expect(issuesOf(validateRoster(input, draft), "WEEKLY_OFF_NOT_GRANTED")).toEqual([]);
+
+    // a manager moves A's off onto Christmas Day by hand (and B covers), although other days were free
+    const edited = applyEdits(
+      draft,
+      [
+        { employeeId: "A", date: plainOff, status: "WORK", coveredBrandProcessIds: ["X"] },
+        { employeeId: "A", date: "2026-12-25", status: "WEEKLY_OFF", coveredBrandProcessIds: [] },
+        { employeeId: "B", date: "2026-12-25", status: "WORK", coveredBrandProcessIds: ["X"] },
+      ],
+      { locked: true, source: "MANUAL" },
+    );
+    const found = issuesOf(validateRoster(input, edited), "WEEKLY_OFF_NOT_GRANTED");
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "ERROR", employeeId: "A", date: week.monday });
+    expect(found[0].message).toContain("public holiday");
+    expect(found[0].message).toContain("Christmas Day");
+    expect(found[0].message).toContain("2026-12-25");
+    expect(found[0].message).toMatch(/although .*20\d\d-12-\d\d.* (was|were) free/);
+    // nothing else is wrong with that roster: coverage still holds
+    expect(issuesOf(validateRoster(input, edited), "COVERAGE_GAP")).toEqual([]);
+  });
+
+  it("S20 repair pass: no avoidable CONSECUTIVE_DAYS_EXCEEDED on the seed", () => {
+    const dec = seedInput("2026-12");
+    const decGen = generateRoster(dec, { suggestions: false });
+    const jan = seedInput("2027-01", {
+      neighbourRosters: [{ month: "2026-12", status: "DRAFT", entries: decGen.draft.entries }],
+    });
+    const janGen = generateRoster(jan, { suggestions: false });
+    for (const gen of [decGen, janGen]) {
+      const owners = issuesOf(gen.issues, "CONSECUTIVE_DAYS_EXCEEDED").map((i) => i.employeeId);
+      // Ananya Reddy (Nimbus Gadgets, no backup, no weekly off possible) is the only allowed owner,
+      // plus anything on the by-name allowlist below with its reason.
+      expect(owners.filter((o) => o !== "emp-ananya-reddy" && !UNREPAIRABLE.includes(o!))).toEqual(
+        [],
+      );
+    }
+    // the repair never trades coverage for it: there are still no coverage errors outside Nimbus
+    for (const gen of [decGen, janGen]) expect(issuesOf(gen.issues, "COVERAGE_GAP")).toEqual([]);
   });
 });
