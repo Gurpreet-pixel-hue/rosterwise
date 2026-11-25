@@ -3,15 +3,15 @@
 Source of truth for scope: `AI_Internship Assessment.pdf` (git-ignored) and `CLAUDE.md`.
 PDF/CLAUDE.md mismatches found so far: none.
 
-| Phase                           | Status                      | Gate request                 | Review                      |
-| ------------------------------- | --------------------------- | ---------------------------- | --------------------------- |
-| P0 Scaffold                     | PASS                        | `docs/reviews/REQUEST-P0.md` | `docs/reviews/REVIEW-P0.md` |
-| P1 Data model + seed            | PASS (round 2)              | `docs/reviews/REQUEST-P1.md` | `docs/reviews/REVIEW-P1.md` |
-| P2 Engine                       | Built, awaiting Opus review | `docs/reviews/REQUEST-P2.md` | pending                     |
-| P3 Persistence & server actions | Not started                 |                              |                             |
-| P4 UI                           | Not started                 |                              |                             |
-| P5 Optional features            | Not started                 |                              |                             |
-| P6 Deploy & docs                | Not started                 |                              |                             |
+| Phase                           | Status           | Gate request                 | Review                      |
+| ------------------------------- | ---------------- | ---------------------------- | --------------------------- |
+| P0 Scaffold                     | PASS             | `docs/reviews/REQUEST-P0.md` | `docs/reviews/REVIEW-P0.md` |
+| P1 Data model + seed            | PASS (round 2)   | `docs/reviews/REQUEST-P1.md` | `docs/reviews/REVIEW-P1.md` |
+| P2 Engine                       | CHANGES_REQUIRED | `docs/reviews/REQUEST-P2.md` | `docs/reviews/REVIEW-P2.md` |
+| P3 Persistence & server actions | Not started      |                              |                             |
+| P4 UI                           | Not started      |                              |                             |
+| P5 Optional features            | Not started      |                              |                             |
+| P6 Deploy & docs                | Not started      |                              |                             |
 
 ## Decisions log
 
