@@ -24,3 +24,4 @@ PDF/CLAUDE.md mismatches found so far: none.
   `prisma`, `esbuild`) so `pnpm install` works in CI without interactive approval.
 - **Vitest config is `.mts`** to silence a Vite ESM-loader warning; CI uses Node 22 (`engines` `>=20`).
 - **`db:seed` and `verify:seed` are stubs** that exit 1 with a message until P1 implements them.
+- **CI first run:** the push of the P0 commits (`5e0a467`) did not start a workflow run; the next push (`ac4ffa9`) did, and it passed all steps. `workflow_dispatch` was added so a run can be started by hand if that recurs.
