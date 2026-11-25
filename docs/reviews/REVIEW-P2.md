@@ -1,4 +1,6 @@
-# Review: P2 Engine. Verdict: CHANGES_REQUIRED
+# Review: P2 Engine. Verdict: PASS (round 2)
+
+Round 1 was CHANGES_REQUIRED; see below. Round 2 is at the end.
 
 Strong phase. Shared validator, enforced purity, stable issue ids, boundary-week mechanism exactly as
 specified, specific human-readable messages, pre-validated suggestions, and 103 meaningful tests. The
@@ -75,3 +77,48 @@ Gaurav @ 2027-01-01 (then carried into Jan); Kavya @ 2027-01-14; Harleen, Sneha 
 
 In the re-request, include the before/after counts for: holiday-hosted offs, `CONSECUTIVE_DAYS_EXCEEDED`
 (excluding Ananya), and total WARNINGs per month. Then push on PASS.
+
+---
+
+# Round 2: PASS
+
+## Verified (independently, not from the request's pasted output)
+
+- `db:seed`, `verify:seed` 27/27, `lint`, `format:check`, `typecheck`, `test` **106/106**, and `build` all pass.
+- My own script (Dec generated, then Jan chained on it), counting directly from `draft.entries`:
+
+  |                                               | Round 1             | Round 2                                            |
+  | --------------------------------------------- | ------------------- | -------------------------------------------------- |
+  | Weekly offs on a public holiday               | 14                  | **5**, all on Sun 2026-12-06                       |
+  | `CONSECUTIVE_DAYS_EXCEEDED`, excluding Ananya | 12                  | **1** (Arjun, 25 Jan)                              |
+  | ERRORs                                        | Ananya only (5 + 4) | Ananya only (5 + 4)                                |
+  | `PREFERRED_OFF_NOT_HONOURED` Dec / Jan        | 7 / 8               | 9 / 9 (accepted trade-off, each is a genuine need) |
+  | Determinism (Dec generated twice)             | equal               | equal                                              |
+  | Time for Dec + Jan, including suggestions     |                     | ~0.7 s                                             |
+
+- **#1:** every one of the 5 remaining holiday-hosted offs is unavoidable. I checked each week of 30 Nov–6 Dec:
+  Aarav, Priya and Gaurav have a Sunday-closed brand with no backup (Gaurav's Pixel Pets), so Sunday is their only
+  free day. Kabir and Siddharth have a contract-fixed Sunday. Siddharth also gets a **real** off on Tue 1 Dec
+  (Zoya covers), which is the fixed-day-on-holiday case Sonnet found on its own. Gaurav's 28 Dec week now reads
+  `01-01 HOLIDAY … 01-03 WEEKLY_OFF` in both the December draft and the chained January draft. Fix confirmed.
+  The validator side (S19b) means a manager doing this by hand gets flagged too.
+- **#2:** read `repair.ts` in full. It's bounded (3 passes, 200k combinations), uses deterministic order and
+  tie-breaks, never touches pinned, fixed-day or holiday cells, rejects any change that adds coverage deficit,
+  and re-checks against the real state after applying (with rollback). Exact enumeration instead of my
+  suggested single move is a justified deviation. The plateau and the 3-share-2 explanation are right.
+  The Arjun allowlist entry (19–25 Jan, Orbit around the 26 Jan holiday plus Sneha's sick day) is accepted,
+  because it needs multi-week, three-person re-planning.
+- **#3:** `oracle.ts` imports none of `state`/`ctx`/`validate`/`generate`. S14 now checks coverage both ways and
+  the exact weekly-off set. It was RED before the fix and caught the bug on its own. The hand-broken roster case
+  proves it isn't vacuous. Exactly what was asked.
+
+## Notes carried into P3 (no action now)
+
+- `simulateChange` / `applyChange` must run the repair pass too, but **only inside the re-planned weeks**
+  (pinned cells outside them already guarantee this; add one test that a change outside a week leaves that
+  week's offs byte-identical).
+- The publish gate must use the IssueAck table: ERRORs block publish unless every ERROR id has an ack with a
+  non-empty note. Test this in P3 with Ananya's 5 December errors.
+- Keep the dry-run CLI. It's the best demo of engine reasoning and will feed `pnpm metrics` in P6.
+
+Push `main`, confirm CI is green, then begin P3.
