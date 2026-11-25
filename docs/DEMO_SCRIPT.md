@@ -7,6 +7,9 @@
 
 ## Seeded scenarios
 
+The baseline roster is meant to fail **only** where intended: Nimbus Gadgets (scenario 2) is the one
+brand that cannot be scheduled cleanly. `pnpm verify:seed` checks this statically and prints it as `EXPECTED`.
+
 ### 1. Single-resource ALL_DAYS brand WITH a backup: resolves cleanly
 
 - **Brand:** Coastal Candles. **Primary:** Ishita Verma (CS ALL_DAYS, ACC every day except public holidays).
@@ -30,15 +33,26 @@
   minimum of 2, so `COVERAGE_GAP` ("has 1 of 2") appears.
 - Also seeded here: a coverage override of 3 on 15 Jan 2027 (everyone works).
 
-### 4. Multi-brand employee: leave causes CASCADE_GAP
+### 4. Multi-brand employee: leave causes CASCADE_GAP, with a mixed resolution
 
 - **Employee:** Aarav Sharma, sole primary for three brands: Lumen Skincare, Verdant Tea Co and
-  Atlas Footwear (all Mon to Sat, closed on Sundays and public holidays). No backups.
+  Atlas Footwear (all Mon to Sat, closed on Sundays and public holidays).
+- **Backups:** only **Atlas Footwear** has one (Rahul Bhatt). Lumen Skincare and Verdant Tea Co have none.
 - **Seeded:** a **PENDING** leave on 29 to 30 Dec. Pending leave is not applied, so the roster shows a
   `PENDING_LEAVE_CONFLICT` warning (he is the sole cover).
-- **Live demo (what-if / approve):** simulate approving it. All three brands lose their only
-  person on the same days, so one `CASCADE_GAP` lists all three brands, with suggestions from the
-  Alpha pod bench (Divya Menon, Rahul Bhatt, Tanvi Joshi).
+- **Live demo (what-if / approve):** simulate approving it. Atlas Footwear is covered automatically by
+  Rahul. Lumen Skincare and Verdant Tea Co lose their only person on the same days, so one
+  `CASCADE_GAP` lists those two brands, with suggestions from the Alpha pod bench (Divya Menon,
+  Tanvi Joshi) via a manager-approved temporary assignment. One brand resolved, two flagged.
+
+### 5. Mini-scenario: client coverage beats a preferred day off
+
+- **Brand:** Harvest Snacks (CS and ACC, every day except public holidays). **Primary:** Shruti Banerjee.
+  **Backup:** Rekha Das, who prefers Saturday and Sunday off.
+- **Seeded:** a coverage override of **2 on Saturday 12 Dec 2026** (sale day). Shruti alone is not enough,
+  so Rekha must work that Saturday even though she prefers it off.
+- **Expected:** coverage wins, the roster stays valid, and a `PREFERRED_OFF_NOT_HONOURED` warning names
+  Rekha. This is the mandatory-versus-preference distinction the assessment asks for (section 3.D).
 
 ## Other seeded features worth showing
 
@@ -48,6 +62,6 @@
 - **Approved comp-off:** Aditi Saxena, 11 Dec. **Rejected leave** (Vikram Rao, 24 to 26 Dec) must not affect the roster.
 - **Fixed weekly off:** Kabir Singh and Siddharth Jain are contractually off on Sundays.
 - **Sale-day override:** Harvest Snacks needs 2 on 12 Dec 2026.
-- **Weekday minimum:** Helix Sports Nutrition CS needs 2 on Mondays; its rule is CUSTOM (Mon to Sat).
+- **Weekday minimum:** Helix Sports Nutrition CS needs 2 on Mondays; its rule is CUSTOM (Mon to Sat). Zoya Ansari backs it up, which keeps Monday 25 Jan 2027 covered while Neha Bansal is on leave.
 - **Mixed calendars in one brand:** Nova Wellness and Cedar and Co Furniture run CS ALL_DAYS next to an
   ACC process that is closed on Sundays and public holidays.

@@ -28,7 +28,7 @@ is recorded here as soon as it is made.
 
 ## Sample data (P1)
 
-8. **The sample company is fictional:** 32 employees, 4 pods, 20 brands, 34 brand-processes. Names, brands
+8. **The sample company is fictional:** 32 employees, 4 pods, 20 brands, 34 brand-processes, 61 assignments. Names, brands
    and the holiday calendar are invented. The holiday on a Sunday (6 Dec 2026) is deliberate, to
    exercise that edge case.
 9. **"Single-resource brand"** means exactly one distinct PRIMARY employee across all of the brand's
@@ -47,5 +47,24 @@ is recorded here as soon as it is made.
     unless `SEED_ALLOW_REMOTE=1`.
 15. **Dates in the schema are `YYYY-MM-DD` strings** and months are `YYYY-MM`; there are no `Date`
     columns for calendar dates (only `createdAt` timestamps).
+
+16. **Employees are never deleted, only deactivated.** `RosterEntry.employee` is `onDelete: Restrict`, so a
+    hard delete is refused while the employee appears in any roster. "Removing" an employee in the
+    app sets `isActive = false` (implemented in P3). History and audit stay intact.
+17. **Leave and public holidays do not replace the weekly off.** A week where the employee has fewer than 4
+    _available_ in-month days (not on approved leave or comp-off) requires no weekly off.
+18. **Boundary weeks: one owner, any day.** A Mon-Sun week that straddles two months requires a weekly off in
+    the month holding at least 4 of its days (28 Dec to 3 Jan belongs to **December**, not January), but the
+    off may sit on **any day of that week, including days in the neighbouring month**. This matters:
+    December's share of that week is Mon to Thu only, so Sunday-off staff on brands closed on Sundays
+    (Aarav Sharma, Kabir Singh, Priya Nair, Gaurav Chopra) can only be off on Sunday 3 Jan. The engine
+    will carry such an off into the January roster as a locked entry (P2). Without this rule December
+    would raise `WEEKLY_OFF_NOT_GRANTED` for four people for no real reason.
+19. **The seed's static feasibility checks are necessary conditions, not proof.** `verify:seed` checks that
+    on every operating day enough assignees are available, and that everyone with PRIMARY duties has at
+    least one day they are not needed. It ignores that colleagues also need offs. The only brand allowed
+    to fail is Nimbus Gadgets (`EXPECTED_INFEASIBLE`, demo scenario 2).
+20. **Bench staff with no assignments** (the backup pool) are shown as "Available (backup pool)" in the
+    employee view, not as blank (UI, P4).
 
 _More assumptions are added per phase._
