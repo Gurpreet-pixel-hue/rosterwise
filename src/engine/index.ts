@@ -4,7 +4,7 @@ export * from "./demand";
 export * from "./availability";
 export { generateRoster, type GenerateOptions, type GenerateResult } from "./generate";
 export { validateRoster, sortIssues } from "./validate";
-export { analyzeRoster } from "./analyze";
+export { analyzeRoster, compOffEarnedFor } from "./analyze";
 export { suggestionsFor, applySuggestion, attachSuggestions } from "./suggest";
 export { applyEdits, type EditFlags } from "./edit";
 export {
