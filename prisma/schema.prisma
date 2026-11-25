@@ -1,4 +1,12 @@
-// RosterWise data model. The full schema (CLAUDE.md section 3) lands in P1.
+// RosterWise data model (CLAUDE.md section 3).
+//
+// Conventions
+// - Dates are `String` columns holding `YYYY-MM-DD`. Never a JS Date at local midnight, so there are
+//   no timezone shifts. Months are `YYYY-MM`. Times of day are `HH:mm`.
+// - Brand operating calendar (BrandProcess + CoverageOverride + PublicHoliday) is DEMAND.
+//   Employee working schedule (Employee + Leave + Assignment) is SUPPLY. They are separate on purpose.
+// - ids are strings: stable hand-written ids in the seed, cuid() for rows the app creates.
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -6,4 +14,235 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+enum Weekday {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
+
+enum OperatingRule {
+  ALL_DAYS // 365 days, including Sundays and public holidays
+  NO_PUBLIC_HOLIDAYS // every day except public holidays
+  NO_SUNDAY_NO_PH // Mon-Sat, excluding public holidays
+  CUSTOM // customWeekdays + worksOnPublicHolidays
+}
+
+enum AssignmentRole {
+  PRIMARY
+  BACKUP
+}
+
+enum LeaveType {
+  PLANNED
+  SICK
+  COMP_OFF
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RosterStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum EntryStatus {
+  WORK
+  WEEKLY_OFF
+  LEAVE
+  COMP_OFF
+  HOLIDAY
+  UNAVAILABLE
+}
+
+enum EntrySource {
+  AUTO
+  MANUAL
+}
+
+model Pod {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  // A pod lead is also an Employee (and can be a BACKUP). Nullable so a pod can exist before its lead.
+  leadId    String?    @unique
+  lead      Employee?  @relation("PodLead", fields: [leadId], references: [id], onDelete: SetNull)
+  employees Employee[] @relation("PodMembers")
+  brands    Brand[]
+}
+
+model Employee {
+  id                 String          @id @default(cuid())
+  name               String
+  podId              String
+  pod                Pod             @relation("PodMembers", fields: [podId], references: [id], onDelete: Restrict)
+  leadOfPod          Pod?            @relation("PodLead")
+  isActive           Boolean         @default(true)
+  weeklyOffsPerWeek  Int             @default(1)
+  // Contract-fixed off days are a HARD constraint; preferred off days are a SOFT preference.
+  fixedOffDays       Weekday[]
+  preferredOffDays   Weekday[]
+  maxConsecutiveDays Int             @default(6)
+  maxDailyHours      Float           @default(9)
+  assignments        Assignment[]
+  leaves             Leave[]
+  compOffCredits     CompOffCredit[]
+  rosterEntries      RosterEntry[]
+
+  @@index([podId])
+}
+
+model Brand {
+  id             String         @id @default(cuid())
+  name           String         @unique
+  // Owning pod. Employees from other pods may still be assigned to the brand.
+  podId          String
+  pod            Pod            @relation(fields: [podId], references: [id], onDelete: Restrict)
+  brandProcesses BrandProcess[]
+
+  @@index([podId])
+}
+
+// Catalog of process types (CS, ACC, NDR, RET, ...). Editable from the UI.
+model Process {
+  id             String         @id @default(cuid())
+  code           String         @unique
+  name           String
+  brandProcesses BrandProcess[]
+}
+
+// Brand x Process with its operating rule, coverage requirement and shift. This is DEMAND.
+model BrandProcess {
+  id                    String             @id @default(cuid())
+  brandId               String
+  brand                 Brand              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  processId             String
+  process               Process            @relation(fields: [processId], references: [id], onDelete: Restrict)
+  operatingRule         OperatingRule
+  // Only read when operatingRule = CUSTOM.
+  customWeekdays        Weekday[]
+  worksOnPublicHolidays Boolean            @default(false)
+  defaultMinStaff       Int                @default(1)
+  // Partial<Record<Weekday, number>>, e.g. { "MON": 2 }. Validated with Zod at the boundary.
+  weekdayMinStaff       Json?
+  // HH:mm, same-day shifts only (shiftStart < shiftEnd).
+  shiftStart            String             @default("09:00")
+  shiftEnd              String             @default("18:00")
+  assignments           Assignment[]
+  coverageOverrides     CoverageOverride[]
+
+  @@unique([brandId, processId])
+  @@index([processId])
+}
+
+// Who CAN cover a BrandProcess. allocationPct is the share of the employee's day it takes.
+model Assignment {
+  id             String         @id @default(cuid())
+  employeeId     String
+  employee       Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  brandProcessId String
+  brandProcess   BrandProcess   @relation(fields: [brandProcessId], references: [id], onDelete: Cascade)
+  role           AssignmentRole
+  allocationPct  Int            @default(100)
+
+  @@unique([employeeId, brandProcessId])
+  @@index([brandProcessId, role])
+}
+
+model PublicHoliday {
+  id   String @id @default(cuid())
+  date String @unique // YYYY-MM-DD
+  name String
+}
+
+model Leave {
+  id         String      @id @default(cuid())
+  employeeId String
+  employee   Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  fromDate   String // YYYY-MM-DD, inclusive
+  toDate     String // YYYY-MM-DD, inclusive; may fall in a later month than fromDate
+  type       LeaveType
+  status     LeaveStatus @default(PENDING)
+  note       String?
+
+  @@index([employeeId, fromDate, toDate])
+}
+
+model CompOffCredit {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  earnedOn   String // YYYY-MM-DD
+  reason     String
+  usedOn     String? // YYYY-MM-DD, null while unused
+
+  @@index([employeeId])
+}
+
+// "Minimum staffing on specific days": wins over weekdayMinStaff and defaultMinStaff.
+model CoverageOverride {
+  id             String       @id @default(cuid())
+  brandProcessId String
+  brandProcess   BrandProcess @relation(fields: [brandProcessId], references: [id], onDelete: Cascade)
+  date           String // YYYY-MM-DD
+  minStaff       Int
+  reason         String?
+
+  @@unique([brandProcessId, date])
+}
+
+model Roster {
+  id              String        @id @default(cuid())
+  month           String // YYYY-MM
+  version         Int
+  status          RosterStatus  @default(DRAFT)
+  parentVersionId String?
+  parent          Roster?       @relation("RosterVersions", fields: [parentVersionId], references: [id], onDelete: SetNull)
+  children        Roster[]      @relation("RosterVersions")
+  createdAt       DateTime      @default(now())
+  entries         RosterEntry[]
+  auditLogs       AuditLog[]
+
+  @@unique([month, version])
+}
+
+// Exactly one entry per (roster, employee, date).
+model RosterEntry {
+  id                     String      @id @default(cuid())
+  rosterId               String
+  roster                 Roster      @relation(fields: [rosterId], references: [id], onDelete: Cascade)
+  employeeId             String
+  employee               Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date                   String // YYYY-MM-DD
+  status                 EntryStatus
+  // BrandProcess ids this employee covers on this date (primary work and backup cover).
+  coveredBrandProcessIds String[]
+  locked                 Boolean     @default(false)
+  source                 EntrySource @default(AUTO)
+
+  @@unique([rosterId, employeeId, date])
+  @@index([rosterId, date])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  rosterId  String?
+  roster    Roster?  @relation(fields: [rosterId], references: [id], onDelete: SetNull)
+  actor     String
+  action    String // e.g. MANUAL_EDIT, APPLY_CHANGE, PUBLISH
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([rosterId, createdAt])
 }
