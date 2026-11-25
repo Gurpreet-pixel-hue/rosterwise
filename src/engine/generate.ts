@@ -13,6 +13,7 @@
 import { analyzeRoster } from "./analyze";
 import { addDays, weekdayOf, weeksOfMonth, type RosterWeek } from "./calendar";
 import { buildCtx, operatesOn, pairKey, requiredOn, type Ctx } from "./ctx";
+import { repairRuns } from "./repair";
 import { computeCompOffEarned, defaultCovered, RosterState, type Cell } from "./state";
 import type { DraftEntry, EngineEmployee, EngineInput, Issue, RosterDraft } from "./types";
 import { validateRoster } from "./validate";
@@ -44,6 +45,7 @@ export function generateRoster(input: EngineInput, opts: GenerateOptions = {}): 
   applyPublicHolidays(ctx, st);
   for (const d of ctx.window) st.fillDate(d);
   placeWeeklyOffs(ctx, st, opts);
+  repairRuns(ctx, st);
   for (const d of ctx.window) st.fillDate(d);
 
   const draft = st.toDraft(computeCompOffEarned(ctx, st));
@@ -326,9 +328,8 @@ function placeWeeklyOffs(ctx: Ctx, st: RosterState, opts: GenerateOptions): void
       ).length;
       if (availableInMonth < 4) continue;
 
-      const existing = week.fullWeek.filter(
-        (d) => st.cell(emp.id, d)?.status === "WEEKLY_OFF",
-      ).length;
+      // offs that already count for this week (a holiday-hosted one counts only if no other day was free)
+      const existing = st.weekOffs(emp.id, week).effective;
       for (let k = existing; k < emp.weeklyOffsPerWeek; k++) {
         const best = chooseOffDay(ctx, st, emp, week.fullWeek, previousOff, weekdayCount);
         // Coverage is client-mandatory: if no day can be given without breaking it, do NOT grant
@@ -378,8 +379,10 @@ function chooseOffDay(
     if (operating && weekdayOf(date) === "SUN") {
       score += 3 * (weekdayCount.get(`${emp.id}|SUN`) ?? 0);
     }
-    // a public holiday is a day off already: prefer a different day, but it stays usable
-    if (cell.status === "HOLIDAY") score += 4;
+    // A public holiday is a day off already, so hosting the weekly off there costs the employee the
+    // holiday. It must lose to every ordinary day that keeps coverage (those cost well under 500) but
+    // still beat "not granted" (1000): a last resort, used only when nothing else is free.
+    if (ctx.holidays.has(date)) score += 500;
     // spill dates are provisional, so prefer in-month days when otherwise equal
     if (!ctx.monthSet.has(date)) score += 2;
     if (previousOff.has(`${emp.id}|${date}`)) score -= 20;

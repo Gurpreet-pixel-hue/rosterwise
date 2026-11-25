@@ -223,8 +223,9 @@ export function validateWith(ctx: Ctx, st: RosterState): Issue[] {
         return a !== "LEAVE" && a !== "COMP_OFF";
       });
       if (availableInMonth.length < 4) continue; // too little of the week to require an off
-      const offs = week.fullWeek.filter((d) => st.cell(emp.id, d)?.status === "WEEKLY_OFF").length;
-      if (offs >= emp.weeklyOffsPerWeek) continue;
+      const w = st.weekOffs(emp.id, week);
+      if (w.effective >= emp.weeklyOffsPerWeek) continue;
+      const offs = w.plain.length;
 
       const free = week.fullWeek.filter((d) => {
         const c = st.cell(emp.id, d);
@@ -247,11 +248,20 @@ export function validateWith(ctx: Ctx, st: RosterState): Issue[] {
       if (lockedWork.length > 0) {
         why += ` Locked days that cannot be changed here: ${lockedWork.join(", ")}.`;
       }
+      // an off sitting on a public holiday although another day was free does not count
+      const holidayNote =
+        w.hosted.length > 0 && w.freeDays.length > 0
+          ? ` The off was placed on public holiday ${w.hosted
+              .map((d) => `${ctx.holidays.get(d)} (${d})`)
+              .join(
+                ", ",
+              )} although ${w.freeDays.join(", ")} ${w.freeDays.length === 1 ? "was" : "were"} free, so the employee loses the holiday.`
+          : "";
       issues.push(
         mk("WEEKLY_OFF_NOT_GRANTED", {
           date: week.monday,
           employeeId: emp.id,
-          message: `${emp.name} has ${offs} of ${emp.weeklyOffsPerWeek} required weekly off(s) in the week of ${week.monday} to ${week.fullWeek[6]}.${why}`,
+          message: `${emp.name} has ${offs} of ${emp.weeklyOffsPerWeek} required weekly off(s) in the week of ${week.monday} to ${week.fullWeek[6]}.${holidayNote}${why}`,
         }),
       );
     }

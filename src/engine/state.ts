@@ -1,5 +1,6 @@
 // Mutable working state of a roster, shared by the generator, the validator and the suggestion
 // engine so they all agree on what "covered", "load" and "needed" mean. Internal to the engine.
+import type { RosterWeek } from "./calendar";
 import { operatesOn, pairKey, requiredOn, type Ctx } from "./ctx";
 import type {
   CompOffEarned,
@@ -18,6 +19,21 @@ export interface Cell {
   note?: string;
   /** Pinned cells are never changed by planning or backup fill (manual locks, history, neighbour data). */
   pinned: boolean;
+}
+
+/** What counts as an employee's weekly off for one Mon-Sun week. */
+export interface WeekOffs {
+  /** WEEKLY_OFF cells on ordinary days. */
+  plain: string[];
+  /** WEEKLY_OFF cells that sit on a public holiday. */
+  hosted: string[];
+  /**
+   * Other, non-holiday days of the week that could have hosted the off instead (working, unlocked,
+   * and fully covered by someone else even after backups). Only computed when something is hosted.
+   */
+  freeDays: string[];
+  /** Offs that count: every plain one, and the holiday-hosted ones only if no other day was free. */
+  effective: number;
 }
 
 export interface Shortfall {
@@ -191,6 +207,19 @@ export class RosterState {
     );
   }
 
+  /**
+   * Start a day's backup cover from scratch: everyone free to plan covers only their PRIMARY duties,
+   * then backup fill adds whoever is still needed. Used after an off moves, so cover that is no longer
+   * needed does not linger on colleagues.
+   */
+  rebuildDay(date: string): Shortfall[] {
+    for (const emp of this.ctx.employees) {
+      const c = this.cell(emp.id, date);
+      if (c && c.status === "WORK" && !c.pinned) c.covered = defaultCovered(this.ctx, emp.id, date);
+    }
+    return this.fillDate(date);
+  }
+
   // ---- what-if -------------------------------------------------------------------------------
 
   snapshotDate(date: string): Map<string, Cell> {
@@ -237,6 +266,36 @@ export class RosterState {
     return after
       .map((s) => ({ ...s, deficit: s.required - s.covering - (before.get(s.bpId) ?? 0) }))
       .filter((s) => s.deficit > 0);
+  }
+
+  /**
+   * Weekly offs in a week, with the holiday rule applied (ASSUMPTIONS 17 and 24): a public holiday is a day
+   * off already, so an off placed on one counts only when no other day of that week could have hosted it.
+   * Shared by the generator and the validator so they cannot disagree.
+   */
+  weekOffs(employeeId: string, week: RosterWeek): WeekOffs {
+    const offs = week.fullWeek.filter((d) => this.cell(employeeId, d)?.status === "WEEKLY_OFF");
+    const hosted = offs.filter((d) => this.ctx.holidays.has(d));
+    const plain = offs.filter((d) => !this.ctx.holidays.has(d));
+    const freeDays =
+      hosted.length === 0
+        ? []
+        : week.fullWeek.filter((d) => {
+            const c = this.cell(employeeId, d);
+            return (
+              !this.ctx.holidays.has(d) &&
+              c !== undefined &&
+              c.status === "WORK" &&
+              !c.pinned &&
+              this.newlyShortIfOff(employeeId, d).length === 0
+            );
+          });
+    return {
+      plain,
+      hosted,
+      freeDays,
+      effective: plain.length + (hosted.length > 0 && freeDays.length === 0 ? hosted.length : 0),
+    };
   }
 
   // ---- conversion ----------------------------------------------------------------------------
