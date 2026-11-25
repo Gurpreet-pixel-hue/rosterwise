@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSeedData, type SeedSnapshot } from "../prisma/seed-data";
-import {
-  brandStructures,
-  datesBetween,
-  runSeedChecks,
-  singleResourcePct,
-  weekdayOf,
-} from "./seed-checks";
+import { brandStructures, runSeedChecks, singleResourcePct } from "./seed-checks";
 
 const clone = (s: SeedSnapshot): SeedSnapshot => structuredClone(s);
 const failing = (s: SeedSnapshot) =>
@@ -147,19 +141,118 @@ describe("the checks actually catch broken data", () => {
   });
 });
 
-describe("date helpers are timezone-proof", () => {
-  it("weekdayOf", () => {
-    expect(weekdayOf("2026-12-01")).toBe("TUE");
-    expect(weekdayOf("2026-12-06")).toBe("SUN");
-    expect(weekdayOf("2027-01-26")).toBe("TUE");
+describe("static feasibility (review finding 2)", () => {
+  const base = buildSeedData();
+  const brandId = (s: SeedSnapshot, name: string) => s.brands.find((b) => b.name === name)!.id;
+  const idOf = (s: SeedSnapshot, name: string) => s.employees.find((e) => e.name === name)!.id;
+  const detailOf = (s: SeedSnapshot, id: string) =>
+    runSeedChecks(s).find((r) => r.id === id)!.detail;
+
+  it("Helix Sports Nutrition CS has a backup, so Neha's leave on Monday 2027-01-25 is coverable", () => {
+    const helixCs = base.brandProcesses.find(
+      (b) => b.brandId === brandId(base, "Helix Sports Nutrition") && b.processId === "proc-cs",
+    )!;
+    expect(
+      base.assignments.some((a) => a.brandProcessId === helixCs.id && a.role === "BACKUP"),
+    ).toBe(true);
   });
 
-  it("datesBetween crosses a month and year boundary inclusively", () => {
-    expect(datesBetween("2026-12-30", "2027-01-02")).toEqual([
-      "2026-12-30",
-      "2026-12-31",
-      "2027-01-01",
-      "2027-01-02",
-    ]);
+  it("removing the Helix backup fails the capacity check and names 2027-01-25", () => {
+    const s = structuredClone(base);
+    const helixCs = s.brandProcesses.find(
+      (b) => b.brandId === brandId(s, "Helix Sports Nutrition") && b.processId === "proc-cs",
+    )!;
+    s.assignments = s.assignments.filter(
+      (a) => !(a.brandProcessId === helixCs.id && a.role === "BACKUP"),
+    );
+    const failed = runSeedChecks(s).filter((r) => !r.ok);
+    expect(failed.map((r) => r.id)).toContain("static-capacity");
+    expect(detailOf(s, "static-capacity")).toContain("Helix Sports Nutrition / CS");
+    expect(detailOf(s, "static-capacity")).toContain("2027-01-25 has at most 1 of 2");
+  });
+
+  it("an unexpected blocked weekly off fails: removing Urban Brew's only backup (ALL_DAYS CS)", () => {
+    const s = structuredClone(base);
+    const ids = new Set(
+      s.brandProcesses
+        .filter((b) => b.brandId === brandId(s, "Urban Brew Coffee"))
+        .map((b) => b.id),
+    );
+    s.assignments = s.assignments.filter(
+      (a) => !(a.role === "BACKUP" && ids.has(a.brandProcessId)),
+    );
+    expect(runSeedChecks(s).find((r) => r.id === "static-weekly-off")!.ok).toBe(false);
+    expect(detailOf(s, "static-weekly-off")).toContain("Harleen Kaur");
+    expect(detailOf(s, "static-weekly-off")).toContain("UNEXPECTED");
+  });
+
+  it("Nimbus Gadgets is reported as EXPECTED, not as a failure", () => {
+    const results = runSeedChecks(base);
+    expect(results.find((r) => r.id === "static-weekly-off")!.ok).toBe(true);
+    expect(detailOf(base, "static-weekly-off")).toContain("EXPECTED: Nimbus Gadgets");
+    expect(detailOf(base, "static-weekly-off")).toContain("Ananya Reddy");
+    expect(results.find((r) => r.id === "expected-infeasible")!.ok).toBe(true);
+  });
+
+  it("giving Nimbus a backup makes the expected infeasibility vanish, which fails", () => {
+    const s = structuredClone(base);
+    for (const bp of s.brandProcesses.filter((b) => b.brandId === brandId(s, "Nimbus Gadgets"))) {
+      s.assignments.push({
+        id: `x-${bp.id}`,
+        employeeId: idOf(s, "Rohan Mehta"),
+        brandProcessId: bp.id,
+        role: "BACKUP",
+        allocationPct: 50,
+      });
+    }
+    expect(runSeedChecks(s).find((r) => r.id === "expected-infeasible")!.ok).toBe(false);
+  });
+
+  it("a leave only blocks when approved: the PENDING and REJECTED leaves do not shrink capacity", () => {
+    const s = structuredClone(base);
+    for (const l of s.leaves.filter((x) => x.status !== "APPROVED")) l.status = "APPROVED";
+    // Approving Aarav's pending leave removes his only coverage of three brands
+    expect(runSeedChecks(s).find((r) => r.id === "static-capacity")!.ok).toBe(false);
+    expect(runSeedChecks(base).find((r) => r.id === "static-capacity")!.ok).toBe(true);
+  });
+
+  it("the December boundary week (28 Dec - 3 Jan) is satisfiable for Sunday-off staff via Sunday 3 Jan", () => {
+    // Aarav's three brands are closed on Sundays, so the only free day of that week is Sun 3 Jan,
+    // which is a January date. The check must allow it, so no UNEXPECTED weekly-off item appears.
+    expect(detailOf(base, "static-weekly-off")).not.toContain("Aarav Sharma");
+    expect(detailOf(base, "static-weekly-off")).not.toContain("UNEXPECTED");
+  });
+});
+
+describe("review findings 5 and 6: scenario 4 mixes backup and no-backup brands", () => {
+  const base = buildSeedData();
+  const brandId = (s: SeedSnapshot, name: string) => s.brands.find((b) => b.name === name)!.id;
+  const bpsOf = (s: SeedSnapshot, name: string) =>
+    s.brandProcesses.filter((b) => b.brandId === brandId(s, name)).map((b) => b.id);
+
+  it("Atlas Footwear has a backup; Lumen Skincare and Verdant Tea Co have none", () => {
+    const backups = (name: string) =>
+      base.assignments.filter(
+        (a) => a.role === "BACKUP" && bpsOf(base, name).includes(a.brandProcessId),
+      );
+    expect(backups("Atlas Footwear").length).toBeGreaterThan(0);
+    expect(backups("Lumen Skincare")).toHaveLength(0);
+    expect(backups("Verdant Tea Co")).toHaveLength(0);
+  });
+
+  it("scenario 4 still passes with the mixed resolution", () => {
+    expect(runSeedChecks(base).find((r) => r.id === "scenario-4")!.ok).toBe(true);
+  });
+
+  it("scenario 4 fails if a second brand gains a backup (it would leave only one gap)", () => {
+    const s = structuredClone(base);
+    s.assignments.push({
+      id: "x",
+      employeeId: s.employees.find((e) => e.name === "Divya Menon")!.id,
+      brandProcessId: bpsOf(s, "Verdant Tea Co")[0],
+      role: "BACKUP",
+      allocationPct: 25,
+    });
+    expect(runSeedChecks(s).find((r) => r.id === "scenario-4")!.ok).toBe(false);
   });
 });

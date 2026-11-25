@@ -1,10 +1,11 @@
 // Assertions for every bullet of CLAUDE.md section 5, written against plain rows so they run both
 // against the live database (scripts/verify-seed.ts) and against buildSeedData() in CI (no DB).
 //
-// This file deliberately does NOT reimplement the scheduling engine's calendar logic. Where a check
-// needs "is the brand operating that day" it uses a conservative proxy (a Mon-Fri non-holiday is
-// operating under every rule).
-import { DEMO_SCENARIOS, type SeedSnapshot, type Weekday } from "../prisma/seed-data";
+// Calendar and demand logic is NOT reimplemented here: the feasibility checks import the engine's own
+// calendar.ts and demand.ts (through scripts/seed-capacity.ts).
+import { DEMO_SCENARIOS, type SeedSnapshot } from "../prisma/seed-data";
+import { datesBetween, weekdayOf } from "../src/engine/calendar";
+import { EXPECTED_INFEASIBLE, findInfeasibilities } from "./seed-capacity";
 
 export interface CheckResult {
   id: string;
@@ -25,27 +26,6 @@ const SINGLE_MIN_PCT = 78;
 const SINGLE_MAX_PCT = 85;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-const WEEKDAYS: Weekday[] = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-/** Weekday of a YYYY-MM-DD string, computed in UTC so it never shifts with the local timezone. */
-export function weekdayOf(date: string): Weekday {
-  const [y, m, d] = date.split("-").map(Number);
-  return WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
-}
-
-/** Inclusive list of dates between two YYYY-MM-DD strings. */
-export function datesBetween(from: string, to: string): string[] {
-  const out: string[] = [];
-  const [y, m, d] = from.split("-").map(Number);
-  const cur = new Date(Date.UTC(y, m - 1, d));
-  for (let guard = 0; guard < 400; guard++) {
-    const iso = cur.toISOString().slice(0, 10);
-    if (iso > to) break;
-    out.push(iso);
-    cur.setUTCDate(cur.getUTCDate() + 1);
-  }
-  return out;
-}
 
 /**
  * Single-resource brand = a brand whose PRIMARY assignments across ALL its brand-processes involve
@@ -404,6 +384,9 @@ export function runSeedChecks(s: SeedSnapshot): CheckResult[] {
     ),
   );
 
+  // ---- Static feasibility (necessary conditions only) ----------------------------------------
+  r.push(...checkFeasibility(s));
+
   // ---- Deliberate demo scenarios -------------------------------------------------------------
   r.push(...checkScenarios(s));
   return r;
@@ -497,19 +480,21 @@ function checkScenarios(s: SeedSnapshot): CheckResult[] {
     );
   }
 
-  // 4. multi-brand employee, sole PRIMARY of 3 brands with no backups, with a PENDING leave
+  // 4. multi-brand employee, sole PRIMARY of 3 brands, with a PENDING leave on a day all of them
+  //    operate. Mixed resolution: exactly one brand has a backup (auto-covered), two have none.
   {
     const sc = DEMO_SCENARIOS.cascade;
     const emp = empByName.get(sc.employee);
-    const brandsOk = sc.brands.every((bn) => {
+    const backupIdsOf = (bn: string) =>
+      new Set(bpsOf(bn).flatMap((bp) => backupsOn(bp.id).map((a) => a.employeeId)));
+    const soleOwner = sc.brands.every((bn) => {
       const st = structures.get(bn);
-      const bps = bpsOf(bn);
-      return (
-        st?.isSingleResource === true &&
-        st.primaryEmployeeIds[0] === emp?.id &&
-        bps.every((bp) => backupsOn(bp.id).length === 0)
-      );
+      return st?.isSingleResource === true && st.primaryEmployeeIds[0] === emp?.id;
     });
+    const backedUpOk =
+      backupIdsOf(sc.backedUpBrand).size === 1 &&
+      backupIdsOf(sc.backedUpBrand).has(empByName.get(sc.backup)?.id ?? "");
+    const unbackedOk = sc.unbackedBrands.every((bn) => backupIdsOf(bn).size === 0);
     const pending = s.leaves.find((l) => l.employeeId === emp?.id && l.status === "PENDING");
     const hasWeekday =
       pending !== undefined &&
@@ -520,11 +505,64 @@ function checkScenarios(s: SeedSnapshot): CheckResult[] {
     out.push(
       ok(
         "scenario-4",
-        "Scenario 4: multi-brand employee with a pending leave on a day all their brands operate",
-        brandsOk && hasWeekday,
-        `${sc.employee} -> ${sc.brands.join(", ")}; pending ${pending?.fromDate}..${pending?.toDate}`,
+        "Scenario 4: multi-brand employee, pending leave; 1 brand has a backup, 2 do not",
+        soleOwner && backedUpOk && unbackedOk && hasWeekday,
+        `${sc.employee} -> ${sc.brands.join(", ")}; ${sc.backedUpBrand} backed up by ${sc.backup}; ` +
+          `pending ${pending?.fromDate}..${pending?.toDate}`,
       ),
     );
   }
   return out;
+}
+
+const FEASIBILITY_NOTE = "necessary condition only, not proof a roster exists";
+
+function checkFeasibility(s: SeedSnapshot): CheckResult[] {
+  const all = findInfeasibilities(s);
+  const expected = (i: { brand: string }) => EXPECTED_INFEASIBLE.includes(i.brand);
+  const describe = (items: typeof all) => items.map((i) => i.message).join(" | ");
+  const section = (kind: "CAPACITY" | "WEEKLY_OFF") => {
+    const items = all.filter((i) => i.kind === kind);
+    const unexpected = items.filter((i) => !expected(i));
+    const exp = items.filter(expected);
+    return { unexpected, exp };
+  };
+
+  const cap = section("CAPACITY");
+  const off = section("WEEKLY_OFF");
+  const found = new Set(all.filter(expected).map((i) => i.brand));
+  const missing = EXPECTED_INFEASIBLE.filter((b) => !found.has(b));
+
+  const detail = (x: ReturnType<typeof section>, clean: string) =>
+    [
+      x.unexpected.length === 0 ? clean : `UNEXPECTED: ${describe(x.unexpected)}`,
+      x.exp.length > 0
+        ? `EXPECTED: ${x.exp.map((i) => `${i.brand}: ${i.message}`).join(" | ")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" || ");
+
+  return [
+    ok(
+      "static-capacity",
+      `static capacity (Dec 2026 and Jan 2027): every operating day has enough available staff (${FEASIBILITY_NOTE}; ignores weekly offs)`,
+      cap.unexpected.length === 0,
+      detail(cap, "no unexpected shortfall"),
+    ),
+    ok(
+      "static-weekly-off",
+      `static weekly-off slack: everyone with PRIMARY duties has a day they are not needed (${FEASIBILITY_NOTE})`,
+      off.unexpected.length === 0,
+      detail(off, "no unexpected blocked weekly off"),
+    ),
+    ok(
+      "expected-infeasible",
+      "every deliberately unschedulable brand (EXPECTED_INFEASIBLE) really is infeasible",
+      missing.length === 0,
+      missing.length === 0
+        ? `EXPECTED: ${[...found].join(", ")}`
+        : `no longer infeasible: ${missing.join(", ")}`,
+    ),
+  ];
 }
