@@ -27,6 +27,7 @@ async function main() {
     async (tx) => {
       // Clear, children first.
       await tx.auditLog.deleteMany();
+      await tx.issueAck.deleteMany();
       await tx.rosterEntry.deleteMany();
       await tx.roster.deleteMany();
       await tx.coverageOverride.deleteMany();

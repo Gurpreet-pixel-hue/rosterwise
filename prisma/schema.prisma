@@ -208,8 +208,11 @@ model Roster {
   parent          Roster?       @relation("RosterVersions", fields: [parentVersionId], references: [id], onDelete: SetNull)
   children        Roster[]      @relation("RosterVersions")
   createdAt       DateTime      @default(now())
+  // Set when status moves to PUBLISHED.
+  publishedAt     DateTime?
   entries         RosterEntry[]
   auditLogs       AuditLog[]
+  issueAcks       IssueAck[]
 
   @@unique([month, version])
 }
@@ -220,7 +223,9 @@ model RosterEntry {
   rosterId               String
   roster                 Roster      @relation(fields: [rosterId], references: [id], onDelete: Cascade)
   employeeId             String
-  employee               Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  // Restrict, not Cascade: deleting an employee must never silently erase rows from published
+  // rosters. "Removing" an employee in the app means isActive = false.
+  employee               Employee    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   date                   String // YYYY-MM-DD
   status                 EntryStatus
   // BrandProcess ids this employee covers on this date (primary work and backup cover).
@@ -245,4 +250,19 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([rosterId, createdAt])
+}
+
+// A manager acknowledging an ERROR so a roster can be published anyway ("unless acknowledged with a
+// note"). issueId is the stable hash from the engine (code + entity + date), so it survives
+// regeneration within a version.
+model IssueAck {
+  id        String   @id @default(cuid())
+  rosterId  String
+  roster    Roster   @relation(fields: [rosterId], references: [id], onDelete: Cascade)
+  issueId   String
+  note      String
+  actor     String
+  createdAt DateTime @default(now())
+
+  @@unique([rosterId, issueId])
 }
