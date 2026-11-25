@@ -4,8 +4,9 @@
 // Everything here is fictional: names, brands, pods and the holiday calendar.
 // The deliberate demo scenarios (CLAUDE.md section 5) are described in docs/DEMO_SCRIPT.md.
 
-export type Weekday = "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN";
-export type OperatingRule = "ALL_DAYS" | "NO_PUBLIC_HOLIDAYS" | "NO_SUNDAY_NO_PH" | "CUSTOM";
+import type { OperatingRule, Weekday } from "../src/engine/types";
+
+export type { OperatingRule, Weekday };
 export type AssignmentRole = "PRIMARY" | "BACKUP";
 export type LeaveType = "PLANNED" | "SICK" | "COMP_OFF";
 export type LeaveStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -218,8 +219,10 @@ interface BrandSpec {
 }
 
 const BRANDS: BrandSpec[] = [
-  // --- Aarav Sharma covers three single-resource brands, all closed on Sundays/PHs, no backups.
-  //     His leave is what produces the CASCADE_GAP demo (scenario 4).
+  // --- Aarav Sharma covers three single-resource brands, all closed on Sundays/PHs.
+  //     Lumen Skincare and Verdant Tea Co have no backup; Atlas Footwear has one (Rahul Bhatt).
+  //     His pending leave is what produces the CASCADE_GAP demo (scenario 4): one brand is
+  //     auto-covered by a backup, the other two are flagged for the manager.
   {
     name: "Lumen Skincare",
     pod: "alpha",
@@ -236,7 +239,14 @@ const BRANDS: BrandSpec[] = [
   {
     name: "Atlas Footwear",
     pod: "alpha",
-    bps: [{ code: "CS", rule: "NO_SUNDAY_NO_PH", primary: [["Aarav Sharma", 25]] }],
+    bps: [
+      {
+        code: "CS",
+        rule: "NO_SUNDAY_NO_PH",
+        primary: [["Aarav Sharma", 25]],
+        backup: [["Rahul Bhatt", 25]],
+      },
+    ],
   },
 
   // --- Kabir Singh: two brands. Fixed Sunday off, so Manish Gupta must cover Pebble Toys on Sundays.
@@ -513,6 +523,8 @@ const BRANDS: BrandSpec[] = [
           ["Siddharth Jain", 100],
           ["Neha Bansal", 70],
         ],
+        // Neha is on approved leave Mon 25 Jan 2027 and Mondays need 2, so a third person is required.
+        backup: [["Zoya Ansari", 60]],
       },
       {
         code: "COD",
@@ -817,9 +829,15 @@ export const DEMO_SCENARIOS = {
     absorbedLeave: "Arjun Nambiar",
     people: ["Pooja Desai", "Arjun Nambiar", "Sneha Kulkarni"],
   },
-  /** 4. Multi-brand employee: their (pending) leave causes CASCADE_GAP across all three brands. */
+  /**
+   * 4. Multi-brand employee: their (pending) leave causes CASCADE_GAP. Mixed resolution: Atlas Footwear
+   * is auto-covered by its backup, Lumen Skincare and Verdant Tea Co are flagged for the manager.
+   */
   cascade: {
     employee: "Aarav Sharma",
     brands: ["Lumen Skincare", "Verdant Tea Co", "Atlas Footwear"],
+    backedUpBrand: "Atlas Footwear",
+    backup: "Rahul Bhatt",
+    unbackedBrands: ["Lumen Skincare", "Verdant Tea Co"],
   },
 } as const;
