@@ -1,4 +1,6 @@
-# Review: P1 Data model + seed. Verdict: CHANGES_REQUIRED
+# Review: P1 Data model + seed. Verdict: PASS (round 2)
+
+Round 1 was CHANGES_REQUIRED; see below. Round 2 is at the end.
 
 Good phase overall. The schema is clean and the seed is well-shaped. Running the same checks on DB-free
 data in CI with negative tests is good work, and so is catching the false idempotence result. The fixes
@@ -73,3 +75,53 @@ below are small. #1 and #2 matter because the baseline roster has to fail only w
   pool). The employee view should label them "Available (backup pool)" rather than leaving them blank.
 - The boundary week 2026-12-28..2027-01-03 has 4 days in December, so the weekly off is required in December's
   roster and not in January's. Add a test for it.
+
+---
+
+# Round 2: PASS
+
+## Verified
+
+- `db:push` → `db:seed` → `verify:seed`: 27/27, 16/20 = 80.0%. The new `static capacity` and
+  `static weekly-off slack` checks pass, and Nimbus Gadgets is reported as `EXPECTED` (Ananya Reddy has no
+  free day in 9/9 weeks). `lint`, `format:check`, `typecheck` and `test` (52/52, 4 files) all pass.
+- #1: Helix CS now has backup Zoya Ansari, so Mon 2027-01-25 has a ceiling of 2/2. Zoya also backs up
+  Quartz (14:00–23:00) and Helix is 09:00–18:00. No seeded day needs her on both, so it won't cause a baseline
+  error, and it's a ready-made `SHIFT_INCOMPATIBLE` manual-edit demo for P2/P4.
+- #2: `seed-capacity.ts` imports the real `isOperating` / `requiredStaff` / `weeksOfMonth`. Read it in full.
+  The logic is correct: APPROVED-only unavailability, fixed off days honoured in both checks, and the
+  allowlist is enforced in both directions. The negative tests are real.
+- #3/#4: schema diff read. `Restrict` on `RosterEntry.employee`, `Roster.publishedAt`, and
+  `IssueAck @@unique([rosterId, issueId])` are all correct.
+- #5/#6: Scenario 4 shows the mixed resolution (Atlas backed by Rahul; Lumen and Verdant have none). Scenario 5 is documented.
+- `calendar.ts` / `demand.ts`: read in full. UTC-only arithmetic and strict date parsing (rejects 2026-02-30).
+  The override → weekday → default order is right, and an explicit 0 wins via `??`. Good.
+
+## Ruling on ASSUMPTIONS 18 (boundary week): ACCEPTED, with a binding mechanism for P2
+
+The ruling is correct and more realistic than the 4-day rule alone. Ops teams think in Mon–Sun weeks,
+and giving four people a false December error would be noise. "Carry the off into January as a locked
+entry" isn't specific enough, though (what if January doesn't exist yet, or is already published?). P2 must implement it this way:
+
+1. **Planning window = full weeks.** The roster for month M stores entries for every date of every Mon–Sun
+   week touching M (Dec 2026 → 2026-11-30 .. 2027-01-03). Entries dated outside M are **spill entries**.
+   No schema change is needed (`date` outside `roster.month` _is_ the flag). Views show in-month dates by
+   default and spill dates greyed.
+2. **Neighbour context.** When generating or validating M, for every spill date, if the neighbouring month
+   has a roster (latest version, any status), its entry for that date is a **locked input**, not something M plans.
+   With no neighbour roster, M plans the spill dates itself (provisional).
+3. **Carry-over.** When generating M+1, any `WEEKLY_OFF` spill entry in M's latest roster that serves an
+   **M-owned** week is copied into M+1 as `locked: true` with `source: AUTO`, plus an audit note "carried from <M>".
+   It stays editable by the manager like any lock, and the validator re-checks it.
+4. **Conflict.** If M needs its off on a spill date but the neighbour roster is PUBLISHED with WORK there, M
+   doesn't overwrite it. It raises `WEEKLY_OFF_NOT_GRANTED` with a suggestion naming the neighbour-month date to change.
+5. **Validation scope.** Coverage issues are raised only for in-month dates of M. The weekly-off requirement
+   for an M-owned week is evaluated over its full week (M entries + spill/neighbour entries).
+6. **Tests (add to the P2 list):**
+   - `S16 boundary week: Dec generated first -> Aarav's off lands on 2027-01-03; Jan generated next carries it locked`
+   - `S17 boundary week: Jan generated with no Dec roster -> no weekly-off issue for the Dec-owned week in Jan`
+   - `S18 boundary week: neighbour PUBLISHED with WORK on the only free day -> WEEKLY_OFF_NOT_GRANTED naming that date`
+
+## Next steps
+
+Push `main` (gate passed), confirm CI is green, then begin P2 with these tests added to S01–S15.
