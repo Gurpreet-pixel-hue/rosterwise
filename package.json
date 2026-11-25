@@ -14,7 +14,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "verify:seed": "tsx scripts/verify-seed.ts"
+    "verify:seed": "tsx scripts/verify-seed.ts",
+    "roster:dry-run": "tsx scripts/roster-dry-run.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
