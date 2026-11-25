@@ -139,4 +139,41 @@ is recorded here as soon as it is made.
     run is inherent (Nimbus Gadgets, no backup, no weekly off possible). Test S20 allowlists Arjun by name.
     Repairing preferences is a trade: moving an off to shorten a run can give up a preferred weekday, so
     `PREFERRED_OFF_NOT_HONOURED` rose slightly (Dec 7 to 9, Jan 8 to 9) while the warning total fell.
-    _More assumptions are added per phase._
+
+    ## Persistence and workflow (P3)
+
+33. **A roster is one VERSION of a month, and only the latest can change.** Generating again or applying a change
+    creates version n+1 with `parentVersionId` = n; an older version is history and every write against it is a
+    `CONFLICT` naming the newer one. Every write also re-checks this inside its own transaction.
+34. **A PUBLISHED roster is never edited in place.** Manual edits, acknowledgements and withdrawals are refused on
+    it. Applying a change to a published roster creates a new DRAFT version that must be published again.
+35. **A manual edit is validated first.** `previewManualEdit` returns the issue delta (added issues come with
+    suggestions) and writes nothing; `saveManualEdit` commits. An edit that introduces ERRORs is still allowed,
+    because the manager may be doing it on purpose; the errors then block publishing until acknowledged. Saved
+    edits are `locked` and `source = MANUAL`, so regeneration keeps them. Only a `WORK` cell can cover
+    brand-processes.
+36. **Applying a change saves its master-data effect and the new version in one transaction** (a leave is created,
+    updated or deleted; a rule or minimum is changed; an override is upserted). The effect runs last, so a late
+    failure rolls the new version and its entries back too. Regeneration keeps locked entries, and keeps
+    everything before `today` when `today` is given.
+37. **Acknowledgements are per version, per stable issue id, ERRORs only, with a note of at least 3 characters.**
+    Publishing is blocked while any ERROR lacks one. They can be withdrawn on a draft. When a new version is
+    created (regenerate or apply), acknowledgements are **carried over only for ERRORs whose id still exists**;
+    anything new must be acknowledged again. The count carried is returned and written to the audit log.
+38. **Publishing creates comp-off credits** for public holidays worked inside the month, never twice for the same
+    employee and date, so re-publishing a later version adds only genuinely new credits.
+39. **Employees are deactivated, not deleted.** A hard delete is refused if they lead a pod or appear in any saved
+    roster. A deactivated employee drops out of new rosters and stays in old ones.
+40. **Master-data edits do not rewrite existing rosters.** They show up through the same validator (adding an approved
+    leave on a day someone works gives `WORK_WHILE_UNAVAILABLE` on the saved roster); regenerating or applying a
+    change re-plans. This is deliberate: a published roster must not change underneath people.
+41. **Every mutation writes an AuditLog row in the same transaction**: actor, action, entity, before, after, and the
+    roster it belongs to. Master data is audited too, not only rosters.
+42. **Known limit: there is no login.** The brief asks for a public app that works without one, so `actor` is a
+    free-text label supplied by the caller and is not authenticated. The audit log records it faithfully but it
+    cannot prove who typed it.
+43. **Integration tests run against a real Postgres** named by `TEST_DATABASE_URL` (CI uses a service container,
+    local use `createdb rosterwise_test`). They wipe and re-seed it, so the name must contain "test" and differ
+    from `DATABASE_URL`; otherwise they refuse to run. Without it they are skipped and say so.
+
+_More assumptions are added per phase._

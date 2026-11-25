@@ -3,15 +3,15 @@
 Source of truth for scope: `AI_Internship Assessment.pdf` (git-ignored) and `CLAUDE.md`.
 PDF/CLAUDE.md mismatches found so far: none.
 
-| Phase                           | Status         | Gate request                 | Review                      |
-| ------------------------------- | -------------- | ---------------------------- | --------------------------- |
-| P0 Scaffold                     | PASS           | `docs/reviews/REQUEST-P0.md` | `docs/reviews/REVIEW-P0.md` |
-| P1 Data model + seed            | PASS (round 2) | `docs/reviews/REQUEST-P1.md` | `docs/reviews/REVIEW-P1.md` |
-| P2 Engine                       | PASS (round 2) | `docs/reviews/REQUEST-P2.md` | `docs/reviews/REVIEW-P2.md` |
-| P3 Persistence & server actions | Not started    |                              |                             |
-| P4 UI                           | Not started    |                              |                             |
-| P5 Optional features            | Not started    |                              |                             |
-| P6 Deploy & docs                | Not started    |                              |                             |
+| Phase                           | Status                                                                                                                  | Gate request                 | Review                        |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ----------------------------- |
+| P0 Scaffold                     | PASS                                                                                                                    | `docs/reviews/REQUEST-P0.md` | `docs/reviews/REVIEW-P0.md`   |
+| P1 Data model + seed            | PASS (round 2)                                                                                                          | `docs/reviews/REQUEST-P1.md` | `docs/reviews/REVIEW-P1.md`   |
+| P2 Engine                       | PASSED, pushed, CI green ([run 45666301496](https://github.com/Gurpreet-pixel-hue/rosterwise/actions/runs/45666301496)) | `docs/reviews/REQUEST-P2.md` | `REVIEW-P2.md` PASS (round 2) |
+| P3 Persistence & server actions | Built, awaiting Opus review                                                                                             | `docs/reviews/REQUEST-P3.md` | pending                       |
+| P4 UI                           | Not started                                                                                                             |                              |                               |
+| P5 Optional features            | Not started                                                                                                             |                              |                               |
+| P6 Deploy & docs                | Not started                                                                                                             |                              |                               |
 
 ## Decisions log
 
@@ -34,3 +34,7 @@ PDF/CLAUDE.md mismatches found so far: none.
 - **P2 additions beyond the plan:** `src/server/buildEngineInput.ts` (pure row-to-input mapping shared by the DB loader, the CLI and tests), `src/engine/{analyze,edit,change,ids,ctx,state}.ts`, an ESLint rule that keeps `src/engine/**` free of Prisma, Next.js, Node I/O and `process`, and an engine-purity test.
 - **Tests S16 to S18** (boundary week) were added to S01 to S15 as the P1 review required.
 - **P2 review round 1:** all three findings fixed (see "Response to review" in `REQUEST-P2.md`): holiday-hosted weekly offs (generator cost +500 and a shared validator rule), a repair pass for working runs, and an independent coverage and weekly-off oracle for S14. Tests S19, S19b and S20 added.
+- **P3 structure:** `src/server/services/{master,roster}.ts` hold all rules and are tested directly; `src/server/actions/*.ts` are thin `"use server"` wrappers that turn expected failures into serialisable results. Zod schemas for every input are in `src/server/schemas.ts`.
+- **CI now has a Postgres service** and runs `db:push`, `db:seed`, `verify:seed` and the integration tests against it, so the P1 and P3 gates run in CI and not only locally.
+- **`vite` added as a direct dev dependency** (the vitest config and global setup import `loadEnv` from it; pnpm does not expose transitive packages).
+- **Seed refactored** into `prisma/seed-lib.ts` (`seedDatabase(prisma)`), used by the CLI and by the integration tests to reset the test database.
