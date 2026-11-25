@@ -1,6 +1,6 @@
 
 Roster dry-run 2026-12 (previous month 2026-11 generated in memory for boundary-week carry-over)
-32 employees, 34 brand-processes, 1120 cells, generated + validated + suggestions in 305 ms. Nothing was saved.
+32 employees, 34 brand-processes, 1120 cells, generated + validated + suggestions in 369 ms. Nothing was saved.
 Legend: W work, w works but covers nothing (backup pool / closed day), O weekly off, Ō locked weekly off, L leave, C comp-off, H holiday. '|' marks the month boundary (dates outside it are spill).
 
                            3|0000000001111111111222222222233|000
@@ -8,7 +8,7 @@ Legend: W work, w works but covers nothing (backup pool / closed day), O weekly 
                            M|TWTFSSMTWTFSSMTWTFSSMTWTFSSMTWT|FSS
 -- pod-alpha
 Aarav Sharma               W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
-Divya Menon                w|OwwwWHOwwwwWwOwwwwWwWWWwHWOOwww|HWw
+Divya Menon                w|OwwwWHwwwwOWwwwwwOWwWWWwHWOOwww|HWw
 Ishita Verma               W|WWWWOWWWWWWOWWWWWWOWLLLWWOWWWWW|WOW
 Meera Iyer                 W|OWWWWHWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
 Nisha Kapoor               W|OWWWWHWWWWWWOWWWWWWOOWWWHWWOWWW|HWW
@@ -18,29 +18,29 @@ Tanvi Joshi                w|wWOwwHWOWwwwwWOWwwwwWOWwHwwWOWw|Hww
 Vikram Rao                 W|WOWWWWOWWWWWWOWWWWWWOWWWWWWOWWW|WWW
 -- pod-bravo
 Ananya Reddy               W|WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW|WWW
-Arjun Nambiar              W|WWWOWWWWWWOWWWWLLOWWWWWWOWWOWWW|HWW
-Farhan Qureshi             w|wwwwOHwwwwwOWwwwwwOWwwwwHOWwwww|HOw
+Arjun Nambiar              W|WWWOWWWWWWOWWWWLLOWWOWWWWWWOWWW|HWW
+Farhan Qureshi             w|wwwwOHwwwwwOWwwwwwOWwwwwHOWwwww|HOW
 Kabir Singh                W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
 Manish Gupta               w|OwwwwHOwwwwwWOwwwwwWOwwwHwWOwww|HwW
-Pooja Desai                W|WWWWWOWWWWWWOOWWWWWWOWWWWWWWOWW|WWW
+Pooja Desai                W|WWWWOWWWWWWOWWWWWWOWWWWWHWOWOWW|WWW
 Rohan Mehta                w|OwwwwHOwwwwwwOwwwwwwOwwwHwwOwww|Hww
-Sneha Kulkarni             W|OWWWWWWOWWWWWWOWWWWWWOWWWWWWWOW|WWW
+Sneha Kulkarni             W|WOWWWHWWWWWWOWWWWWWOWWOWWWWWWOW|WWW
 -- pod-charlie
-Dev Choudhary              w|OwwwwWOwWwwwWWOwwwwwWOwwHwwWOww|Hww
-Imran Sheikh               W|WWWWWOWWLWWWOOWWWWWWOWWWWWWOWWW|WWW
+Dev Choudhary              w|wOWwwHwwWwOwWwwwwOwWWwwwHOwWOww|Hww
+Imran Sheikh               W|WWOWWWWWLWWWOWWWWWWOOWWWWWWOWWW|WWW
 Kavya Hegde                W|WWOWWWLWWOWWWWWWOWWWWWWOWWWWWWO|WWW
-Nikhil Agarwal             W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
+Nikhil Agarwal             W|OWWWWHWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
 Priya Nair                 W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
 Rekha Das                  w|WwwwOHWwwwwWOWwwwwOwWwwwHOwWwww|HOw
 Shruti Banerjee            W|OWWWWHOWWWWWWOWWWWWWOWWWHWWOWWW|HWW
 -- pod-delta
 Aditi Saxena               W|OWWWWHWWWWCWOWWWWWWOWWWWHWOWWWW|HWO
-Gaurav Chopra              W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|OWW
-Harleen Kaur               W|OWWWWWWOWWWWWWOWWWWWWOWWWWWWWLL|HLW
-Karan Malhotra             w|WOwwwHOWwwwwwOWwwwwwOWwwHwwOwWW|WWw
+Gaurav Chopra              W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
+Harleen Kaur               W|WWOWWWWWOWWWWWWOWWWWWWOWWWWWWLL|HLW
+Karan Malhotra             w|wOWwwHOwWwwwwOwWwwwwOwWwHwwOwWW|WWw
 Neha Bansal                W|WOWWWHWWOWWWWWWOWWWWWWOWHWwWWOW|HWw
 Omkar Kadam                W|OWWWWHWWWWWWOWWWWWWOOWWWHWWOWWW|HWW
-Siddharth Jain             W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
+Siddharth Jain             W|OWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
 Zoya Ansari                w|WwOwwHOwwwWwwOwwwwwwOwwwHwwOwww|Hww
 
 Coverage per brand-process (digit = people covering, '.' = not operating, '!' = short)
@@ -52,7 +52,7 @@ Coastal Candles / CS               365 1|1111111111111111111111111111111|111
 Harvest Snacks / ACC               NPH 1|11111.111111111111111111.111111|.11
 Harvest Snacks / CS                NPH 1|11111.111112111111111111.111111|.11
 Helix Sports Nutrition / COD       NPH 1|11111.111111111111111111.111111|.11
-Helix Sports Nutrition / CS        CUS 2|21222.221222.221222.2212.2.2212|.2.
+Helix Sports Nutrition / CS        CUS 2|11222.221222.221222.2212.2.2212|.2.
 Indigo Denim / CS                  NSP 1|11111.111111.111111.1111.1.1111|.1.
 Indigo Denim / RET                 NSP 1|11111.111111.111111.1111.1.1111|.1.
 Lumen Skincare / ACC               NSP 1|11111.111111.111111.1111.1.1111|.1.
@@ -63,7 +63,7 @@ Nimbus Gadgets / NDR               365 1|1111111111111111111111111111111|111
 Nova Wellness / ACC                NSP 1|11111.111111.111111.1111.1.1111|.1.
 Nova Wellness / CS                 365 1|1111111111111111111111111111111|111
 Nova Wellness / NDR                NPH 1|11111.111111111111111111.111111|.11
-Orbit Electronics / CS             365 3|2332323233232222223322332332223|233
+Orbit Electronics / CS             365 3|3232223333222332222223232322223|233
 Orchid Home / ACC                  NSP 1|11111.111111.111111.1111.1.1111|.1.
 Orchid Home / CS                   NSP 1|11111.111111.111111.1111.1.1111|.1.
 Pebble Toys / CS                   NPH 1|11111.111111111111111111.111111|.11
@@ -79,12 +79,12 @@ Urban Brew Coffee / NDR            NPH 1|11111.111111111111111111.111111|.11
 Verdant Tea Co / CS                NSP 1|11111.111111.111111.1111.1.1111|.1.
 Zephyr Apparel / CS                365 1|1111111111111111111111111111111|111
 
-Issues: 36 total
+Issues: 33 total
      5  ERROR WEEKLY_OFF_NOT_GRANTED
     16  INFO COMP_OFF_EARNED
-     6  WARNING CONSECUTIVE_DAYS_EXCEEDED
+     1  WARNING CONSECUTIVE_DAYS_EXCEEDED
      2  WARNING PENDING_LEAVE_CONFLICT
-     7  WARNING PREFERRED_OFF_NOT_HONOURED
+     9  WARNING PREFERRED_OFF_NOT_HONOURED
 
 ERRORs (5):
   [WEEKLY_OFF_NOT_GRANTED] Ananya Reddy has 0 of 1 required weekly off(s) in the week of 2026-11-30 to 2026-12-06. Every day they could be off is needed to keep coverage: Nimbus Gadgets / CS, Nimbus Gadgets / NDR. Locked days that cannot be changed here: 2026-11-30.

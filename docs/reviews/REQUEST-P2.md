@@ -1,37 +1,97 @@
-# Review request: P2 Engine
+# Review request: P2 Engine (round 2)
 
-## Done
+Round 1 was CHANGES_REQUIRED with three findings. All three are fixed; the numbered response, the
+before/after counts and the remaining unavoidable cases are below. The original deliverables (everything in
+section 4 of CLAUDE.md, tests S01 to S18, `pnpm roster:dry-run`) are unchanged except where noted.
 
-All of section 4 of CLAUDE.md, in `src/engine/` (pure TypeScript; an ESLint rule and a test enforce that it
-imports no Prisma, Next.js, Node I/O or `process`, reads no clock and uses no randomness):
+## Done in this round
 
-- `types.ts`, `calendar.ts`, `demand.ts` (P1), `availability.ts`, `generate.ts`, `validate.ts` (the single source of truth), `suggest.ts`, `diff.ts`, `explain.ts`, `index.ts`.
-- Additions beyond the plan's file list: `change.ts` (`simulateChange`, section 4 "Change handling"), `edit.ts` (apply cell edits), `analyze.ts` (validate + suggestions), `ctx.ts` and `state.ts` (shared indexes and the working roster, so the generator, validator and suggester agree on "covered", "load" and "needed"), `ids.ts` (stable issue ids, FNV-1a, no crypto import).
-- `src/server/buildEngineInput.ts`: pure row-to-input mapping (validates the `weekdayMinStaff` JSON), shared by the DB loader, the CLI and the tests. `src/server/loadEngineInput.ts`: the Prisma reader, including the neighbouring months' latest rosters.
-- `scripts/roster-dry-run.ts` and `pnpm roster:dry-run YYYY-MM [--no-chain]`: a text grid, per brand-process coverage and an issue summary. Nothing is saved. By default it generates the previous month in memory first, so the boundary-week carry-over is visible.
-- Tests: **S01 to S15 with the exact names from section 4, plus S16 to S18 from the P1 review** (names checked mechanically against CLAUDE.md and the review: none missing), one test per issue code, the correctness traps from section 9, `simulateChange`, `diffRosters`, `explainIssue`, engine purity. 103 tests in total.
-- The boundary-week mechanism is implemented as the P1 review specified it: full-week planning window, spill entries, neighbour locks, carry-over as a locked `AUTO` entry with a "carried from" note, never overwriting a neighbour's entry, validation scope.
-- 4 commits, none with Claude attribution. **Nothing pushed** (push on PASS). The last push was P1 (`0783e84`, CI green).
+- **Finding 1 (BLOCKER).** Weekly offs no longer land on public holidays when another day is free.
+  `src/engine/state.ts`: one shared `RosterState.weekOffs()` returns the plain offs, the holiday-hosted offs, the
+  free alternative days, and the number of offs that count. `generate.ts` charges **+500** for a holiday day
+  (was +4) and counts only offs that count. `validate.ts` raises `WEEKLY_OFF_NOT_GRANTED` when a holiday-hosted
+  off does not count, with a message naming the holiday and the free day. No new issue code.
+- **Finding 2 (MAJOR).** `src/engine/repair.ts`, a repair pass after weekly-off placement (details below).
+- **Finding 3 (MAJOR).** `src/engine/__tests__/oracle.ts`: an independent oracle; S14 now uses it.
+- **New tests:** `S19`, `S19b` (validator-only), `S20`. 106 tests in total (was 103).
+- ASSUMPTIONS 24, 25 and 31 rewritten, 32 added. 3 commits, none with Claude attribution. **Nothing pushed.**
 
 ## How to verify
 
 ```
-pnpm db:push && pnpm db:seed && pnpm verify:seed      # still 27/27
+pnpm db:seed && pnpm verify:seed                      # still 27/27
 pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build
 pnpm roster:dry-run 2026-12
 pnpm roster:dry-run 2027-01
 ```
 
+## Before / after counts
+
+"Before" is the engine as reviewed (commit `93097a9`), "after" is this round. Both are measured by the same
+probe on the seed (December generated, then January chained on it).
+
+|                                                                        | Before                                                   | After                         |
+| ---------------------------------------------------------------------- | -------------------------------------------------------- | ----------------------------- |
+| **Holiday-hosted weekly offs** (distinct employee + date, both months) | **13**                                                   | **5**                         |
+| `CONSECUTIVE_DAYS_EXCEEDED`, December, excluding Ananya                | **5** (Dev, Divya, Pooja, Harleen, Sneha)                | **0**                         |
+| `CONSECUTIVE_DAYS_EXCEEDED`, January, excluding Ananya                 | **7** (Gaurav, Nisha, Omkar, Pooja, Tanvi, Arjun, Zoya)  | **1** (Arjun)                 |
+| `CONSECUTIVE_DAYS_EXCEEDED`, including Ananya, Dec / Jan               | 6 / 8                                                    | 1 / 2                         |
+| **Total WARNINGs, December**                                           | **15** (6 consecutive, 2 pending-leave, 7 preferred-off) | **12** (1, 2, 9)              |
+| **Total WARNINGs, January**                                            | **16** (8 consecutive, 8 preferred-off)                  | **11** (2, 9)                 |
+| ERRORs, December / January                                             | 5 / 4, all Ananya                                        | 5 / 4, all Ananya (unchanged) |
+| Tests                                                                  | 103                                                      | 106                           |
+
+The review text says "14 offs on holidays" but lists 13 names and dates; I reproduced exactly those 13.
+One honest trade-off: `PREFERRED_OFF_NOT_HONOURED` rose (Dec 7 to 9, Jan 8 to 9) because shortening a run can
+mean giving up a preferred weekday. The total still fell by 3 in December and 5 in January.
+
+### The 5 remaining holiday-hosted offs, and why each is unavoidable
+
+All are **Sun 6 Dec 2026 ("Regional Winter Festival", a public holiday on a Sunday)**. Every one is checked by the
+independent oracle in S19.
+
+| Employee       | Why the holiday hosts the off                                                                                                                                                                                        |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Aarav Sharma   | Sole cover for Lumen Skincare, Verdant Tea Co and (with a backup) Atlas Footwear. Lumen and Verdant are closed on Sundays and have no backup, so Mon to Sat are all needed. The Sunday holiday is the only free day. |
+| Kabir Singh    | Sole cover for Orchid Home (closed Sundays, no backup): Mon to Sat all needed. His contract-fixed Sunday off is also the holiday.                                                                                    |
+| Priya Nair     | Sole cover for Indigo Denim (closed Sundays, no backup).                                                                                                                                                             |
+| Gaurav Chopra  | Sole cover for Pixel Pets (closed Sundays, no backup); Terra Organics has a backup but that does not free his Pixel Pets days.                                                                                       |
+| Siddharth Jain | His contract-fixed Sunday off falls on the holiday and is forced. But other days were free, so he **also gets a real off on Tue 1 Dec** (`O` twice in his row) and keeps the holiday.                                |
+
+Gaurav's case from the review, now: his 28 Dec week off is on **Sun 3 Jan** (carried into January as a locked
+`Ō`), and New Year's Day stays `H`. In December's draft: `Gaurav Chopra ... |HWO`.
+
+```
+Legend: W work, w works but covers nothing (backup pool / closed day), O weekly off, Ō locked weekly off, L leave, C comp-off, H holiday. '|' marks the month boundary (dates outside it are spill).
+
+                           3|0000000001111111111222222222233|000
+Aarav Sharma               W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
+Arjun Nambiar              W|WWWOWWWWWWOWWWWLLOWWOWWWWWWOWWW|HWW
+Kabir Singh                W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
+Pooja Desai                W|WWWWOWWWWWWOWWWWWWOWWWWWHWOWOWW|WWW
+Imran Sheikh               W|WWOWWWWWLWWWOWWWWWWOOWWWWWWOWWW|WWW
+Priya Nair                 W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
+Gaurav Chopra              W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
+Siddharth Jain             W|OWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
+```
+
+January, Gaurav's carried off (`Ō`) on 3 Jan and `H` on 1 Jan:
+
+```
+Gaurav Chopra              WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
+```
+
 ## Verification output
 
-### `pnpm test`: 8 files, 103 tests, all passing (full names below)
+`pnpm test`: **8 files, 106 tests, all passing**. `pnpm lint`, `pnpm format:check`, `pnpm typecheck` and
+`pnpm build` exit 0. `pnpm verify:seed`: 27/27.
 
 ```
  Test Files  8 passed (8)
-      Tests  103 passed (103)
+      Tests  106 passed (106)
 ```
 
-<details><summary>All 103 test names</summary>
+<details><summary>All 106 test names</summary>
 
 ```
 calendar.test.ts > date helpers (string dates, no local-timezone drift) > weekdayOf
@@ -67,6 +127,17 @@ demand.test.ts > requiredStaff resolution: CoverageOverride -> weekdayMinStaff -
 demand.test.ts > requiredStaff resolution: CoverageOverride -> weekdayMinStaff -> defaultMinStaff, only if operating > an override for a different brand-process or date is ignored
 demand.test.ts > requiredStaff resolution: CoverageOverride -> weekdayMinStaff -> defaultMinStaff, only if operating > ignores a weekday minimum for a weekday that is not a working day (CUSTOM)
 demand.test.ts > expandDemand > returns Map<bpId, Map<date, required>> covering every requested date
+src/lib/utils.test.ts > cn > merges class names and lets later Tailwind utilities win
+src/lib/utils.test.ts > cn > drops falsy values
+scripts/seed-checks.test.ts > seed data satisfies CLAUDE.md section 5 > passes every check
+scripts/seed-checks.test.ts > seed data satisfies CLAUDE.md section 5 > has the headline numbers
+scripts/seed-checks.test.ts > seed data satisfies CLAUDE.md section 5 > uses unique ids and unique brand-process / assignment pairs
+scripts/seed-checks.test.ts > seed data satisfies CLAUDE.md section 5 > is deterministic: building twice gives deep-equal data
+scripts/seed-checks.test.ts > the checks actually catch broken data > fewer than 32 employees fails
+scripts/seed-checks.test.ts > the checks actually catch broken data > a second PRIMARY on a single-resource brand drops the single-resource %
+scripts/seed-checks.test.ts > the checks actually catch broken data > BACKUP assignments do not make a brand multi-resource
+scripts/seed-checks.test.ts > the checks actually catch broken data > removing the backup breaks scenario 1
+scripts/seed-checks.test.ts > the checks actually catch broken data > adding a backup to the no-backup brand breaks scenario 2
 codes.test.ts > every issue code is detected, with the right severity > NO_ELIGIBLE_STAFF: a brand-process that operates but has nobody assigned (one issue, not a flood of gaps)
 codes.test.ts > every issue code is detected, with the right severity > WORK_WHILE_UNAVAILABLE: only possible through a manual edit on a day of approved leave
 codes.test.ts > every issue code is detected, with the right severity > FIXED_OFF_VIOLATED: a contract-fixed off day is forced by the generator, even on a public holiday
@@ -82,17 +153,6 @@ codes.test.ts > correctness traps > a brand-process with minimum 0 needs nobody,
 codes.test.ts > correctness traps > an inactive employee is ignored entirely: no entries, no issues, never used as cover
 codes.test.ts > correctness traps > every employee has exactly one entry per planning-window date
 codes.test.ts > correctness traps > weeklyOffsPerWeek 2 gives two offs per qualifying week
-src/lib/utils.test.ts > cn > merges class names and lets later Tailwind utilities win
-src/lib/utils.test.ts > cn > drops falsy values
-scripts/seed-checks.test.ts > seed data satisfies CLAUDE.md section 5 > passes every check
-scripts/seed-checks.test.ts > seed data satisfies CLAUDE.md section 5 > has the headline numbers
-scripts/seed-checks.test.ts > seed data satisfies CLAUDE.md section 5 > uses unique ids and unique brand-process / assignment pairs
-scripts/seed-checks.test.ts > seed data satisfies CLAUDE.md section 5 > is deterministic: building twice gives deep-equal data
-scripts/seed-checks.test.ts > the checks actually catch broken data > fewer than 32 employees fails
-scripts/seed-checks.test.ts > the checks actually catch broken data > a second PRIMARY on a single-resource brand drops the single-resource %
-scripts/seed-checks.test.ts > the checks actually catch broken data > BACKUP assignments do not make a brand multi-resource
-scripts/seed-checks.test.ts > the checks actually catch broken data > removing the backup breaks scenario 1
-scripts/seed-checks.test.ts > the checks actually catch broken data > adding a backup to the no-backup brand breaks scenario 2
 scripts/seed-checks.test.ts > the checks actually catch broken data > a second overlapping leave breaks scenario 3 (it must stay absorbable)
 scripts/seed-checks.test.ts > the checks actually catch broken data > giving Aarav's brand a backup breaks scenario 4
 scripts/seed-checks.test.ts > the checks actually catch broken data > dropping the pending leave fails the December check
@@ -125,65 +185,31 @@ scenarios.test.ts > engine scenarios > S10 locked entries preserved across regen
 scenarios.test.ts > engine scenarios > S11 preferred off conflicts with coverage -> coverage wins + PREFERRED_OFF_NOT_HONOURED
 scenarios.test.ts > engine scenarios > S12 incompatible shifts across brands -> SHIFT_INCOMPATIBLE
 scenarios.test.ts > engine scenarios > S13 every suggestion returned, when applied, introduces no new ERROR
-scenarios.test.ts > engine scenarios > S14 invariant on the full seed for 2 months: generator-reported ERRORs == validator ERRORs
 change.test.ts > simulateChange (assessment section F), without saving > changing a brand's operating rule is previewed, not applied, and re-plans the whole month
-scenarios.test.ts > engine scenarios > S15 weekly offs: every employee gets >= weeklyOffsPerWeek in qualifying weeks unless an ERROR explains why
+scenarios.test.ts > engine scenarios > S14 invariant on the full seed for 2 months: generator-reported ERRORs == validator ERRORs
 change.test.ts > simulateChange (assessment section F), without saving > dates before today are history: a change cannot rewrite them
+scenarios.test.ts > engine scenarios > S15 weekly offs: every employee gets >= weeklyOffsPerWeek in qualifying weeks unless an ERROR explains why
 change.test.ts > diffRosters > identical rosters have no changes
 scenarios.test.ts > engine scenarios > S16 boundary week: Dec generated first -> Aarav's off lands on 2027-01-03; Jan generated next carries it locked
-scenarios.test.ts > engine scenarios > S17 boundary week: Jan generated with no Dec roster -> no weekly-off issue for the Dec-owned week in Jan
 change.test.ts > diffRosters > reports changed cells and matches issues by stable id
+scenarios.test.ts > engine scenarios > S17 boundary week: Jan generated with no Dec roster -> no weekly-off issue for the Dec-owned week in Jan
 change.test.ts > diffRosters > issue ids are stable across regeneration
 scenarios.test.ts > engine scenarios > S18 boundary week: neighbour PUBLISHED with WORK on the only free day -> WEEKLY_OFF_NOT_GRANTED naming that date
+scenarios.test.ts > engine scenarios > S19 holiday hosts a weekly off only when no other day is free (Gaurav: off on 2027-01-03, H on 2027-01-01; Aarav 2026-12-06 still allowed)
 change.test.ts > explainIssue is deterministic and specific > covers every issue code and always includes the issue's own message
 change.test.ts > explainIssue is deterministic and specific > explains Ananya Reddy's missing weekly off by naming the brands she alone covers
+scenarios.test.ts > engine scenarios > S19b validator-only: an avoidable weekly off on a public holiday is WEEKLY_OFF_NOT_GRANTED, naming the holiday and the free day
+scenarios.test.ts > engine scenarios > S20 repair pass: no avoidable CONSECUTIVE_DAYS_EXCEEDED on the seed
 ```
 
 </details>
-
-`pnpm lint`, `pnpm format:check`, `pnpm typecheck` and `pnpm build` exit 0. `pnpm verify:seed`: 27/27 checks passed.
-
-### `pnpm roster:dry-run 2026-12` and `2027-01`
-
-Summary (full output below and in `docs/reviews/p2/`):
-
-| Month   | ERROR                      | WARNING                                              | INFO                 | What the ERRORs are                                                     |
-| ------- | -------------------------- | ---------------------------------------------------- | -------------------- | ----------------------------------------------------------------------- |
-| 2026-12 | 5 `WEEKLY_OFF_NOT_GRANTED` | 6 consecutive-days, 7 preferred-off, 2 pending-leave | 16 `COMP_OFF_EARNED` | all five are Ananya Reddy (Nimbus Gadgets, intentionally unschedulable) |
-| 2027-01 | 4 `WEEKLY_OFF_NOT_GRANTED` | 8 consecutive-days, 8 preferred-off                  | 24 `COMP_OFF_EARNED` | all four are Ananya Reddy                                               |
-
-**Hand-check pointers** (two brands, as the reviewer checklist asks). December, `|` marks the month boundary, `Ō` a locked off:
-
-```
-Legend: W work, w works but covers nothing (backup pool / closed day), O weekly off, Ō locked weekly off, L leave, C comp-off, H holiday. '|' marks the month boundary (dates outside it are spill).
-
-                           3|0000000001111111111222222222233|000
-Aarav Sharma               W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
-Divya Menon                w|OwwwWHOwwwwWwOwwwwWwWWWwHWOOwww|HWw
-Ishita Verma               W|WWWWOWWWWWWOWWWWWWOWLLLWWOWWWWW|WOW
-Ananya Reddy               W|WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW|WWW
-Arjun Nambiar              W|WWWOWWWWWWOWWWWLLOWWWWWWOWWOWWW|HWW
-Pooja Desai                W|WWWWWOWWWWWWOOWWWWWWOWWWWWWWOWW|WWW
-Sneha Kulkarni             W|OWWWWWWOWWWWWWOWWWWWWOWWWWWWWOW|WWW
-Coastal Candles / ACC              NPH 1|11111.111111111111111111.111111|.11
-Coastal Candles / CS               365 1|1111111111111111111111111111111|111
-Helix Sports Nutrition / CS        CUS 2|21222.221222.221222.2212.2.2212|.2.
-Nimbus Gadgets / CS                365 1|1111111111111111111111111111111|111
-Nimbus Gadgets / NDR               365 1|1111111111111111111111111111111|111
-Orbit Electronics / CS             365 3|2332323233232222223322332332223|233
-```
-
-- _Single-resource ALL_DAYS brand with a backup (Coastal Candles, Ishita Verma + Divya Menon):_ Ishita's offs are the four Saturdays (5, 12, 19, 26 Dec: her preferred days); Divya works each of those days and Coastal Candles / CS reads `1` on all 35 days. Her leave 21 to 23 Dec shows `LLL` and Divya covers (CS still `1`, ACC `1`). On the public holidays 6 and 25 Dec Ishita works and earns a comp-off while Divya is `H`; ACC (every day except holidays) reads `.` on those two days.
-- _3-person brand (Orbit Electronics, Pooja / Arjun / Sneha, min 2):_ coverage reads `2` or `3` every day, including `2 2` on Arjun's leave 16 and 17 Dec (Pooja + Sneha), and the Jan 15 override of 3 reads `3` (see the January file).
-- _Intentionally unschedulable (Nimbus Gadgets, Ananya Reddy):_ no `O` in the whole row, 5 errors, each with a suggestion (a same-pod temporary assignment).
-- _Boundary week:_ Aarav Sharma (three brands closed on Sundays) has his December-boundary-week off on Sun 3 Jan. In the January dry-run it is carried into 3 Jan as a locked `Ō` entry (also test S16).
 
 <details><summary>Full dry-run 2026-12</summary>
 
 ```
 
 Roster dry-run 2026-12 (previous month 2026-11 generated in memory for boundary-week carry-over)
-32 employees, 34 brand-processes, 1120 cells, generated + validated + suggestions in 305 ms. Nothing was saved.
+32 employees, 34 brand-processes, 1120 cells, generated + validated + suggestions in 369 ms. Nothing was saved.
 Legend: W work, w works but covers nothing (backup pool / closed day), O weekly off, Ō locked weekly off, L leave, C comp-off, H holiday. '|' marks the month boundary (dates outside it are spill).
 
                            3|0000000001111111111222222222233|000
@@ -191,7 +217,7 @@ Legend: W work, w works but covers nothing (backup pool / closed day), O weekly 
                            M|TWTFSSMTWTFSSMTWTFSSMTWTFSSMTWT|FSS
 -- pod-alpha
 Aarav Sharma               W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
-Divya Menon                w|OwwwWHOwwwwWwOwwwwWwWWWwHWOOwww|HWw
+Divya Menon                w|OwwwWHwwwwOWwwwwwOWwWWWwHWOOwww|HWw
 Ishita Verma               W|WWWWOWWWWWWOWWWWWWOWLLLWWOWWWWW|WOW
 Meera Iyer                 W|OWWWWHWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
 Nisha Kapoor               W|OWWWWHWWWWWWOWWWWWWOOWWWHWWOWWW|HWW
@@ -201,29 +227,29 @@ Tanvi Joshi                w|wWOwwHWOWwwwwWOWwwwwWOWwHwwWOWw|Hww
 Vikram Rao                 W|WOWWWWOWWWWWWOWWWWWWOWWWWWWOWWW|WWW
 -- pod-bravo
 Ananya Reddy               W|WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW|WWW
-Arjun Nambiar              W|WWWOWWWWWWOWWWWLLOWWWWWWOWWOWWW|HWW
-Farhan Qureshi             w|wwwwOHwwwwwOWwwwwwOWwwwwHOWwwww|HOw
+Arjun Nambiar              W|WWWOWWWWWWOWWWWLLOWWOWWWWWWOWWW|HWW
+Farhan Qureshi             w|wwwwOHwwwwwOWwwwwwOWwwwwHOWwwww|HOW
 Kabir Singh                W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
 Manish Gupta               w|OwwwwHOwwwwwWOwwwwwWOwwwHwWOwww|HwW
-Pooja Desai                W|WWWWWOWWWWWWOOWWWWWWOWWWWWWWOWW|WWW
+Pooja Desai                W|WWWWOWWWWWWOWWWWWWOWWWWWHWOWOWW|WWW
 Rohan Mehta                w|OwwwwHOwwwwwwOwwwwwwOwwwHwwOwww|Hww
-Sneha Kulkarni             W|OWWWWWWOWWWWWWOWWWWWWOWWWWWWWOW|WWW
+Sneha Kulkarni             W|WOWWWHWWWWWWOWWWWWWOWWOWWWWWWOW|WWW
 -- pod-charlie
-Dev Choudhary              w|OwwwwWOwWwwwWWOwwwwwWOwwHwwWOww|Hww
-Imran Sheikh               W|WWWWWOWWLWWWOOWWWWWWOWWWWWWOWWW|WWW
+Dev Choudhary              w|wOWwwHwwWwOwWwwwwOwWWwwwHOwWOww|Hww
+Imran Sheikh               W|WWOWWWWWLWWWOWWWWWWOOWWWWWWOWWW|WWW
 Kavya Hegde                W|WWOWWWLWWOWWWWWWOWWWWWWOWWWWWWO|WWW
-Nikhil Agarwal             W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
+Nikhil Agarwal             W|OWWWWHWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
 Priya Nair                 W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
 Rekha Das                  w|WwwwOHWwwwwWOWwwwwOwWwwwHOwWwww|HOw
 Shruti Banerjee            W|OWWWWHOWWWWWWOWWWWWWOWWWHWWOWWW|HWW
 -- pod-delta
 Aditi Saxena               W|OWWWWHWWWWCWOWWWWWWOWWWWHWOWWWW|HWO
-Gaurav Chopra              W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|OWW
-Harleen Kaur               W|OWWWWWWOWWWWWWOWWWWWWOWWWWWWWLL|HLW
-Karan Malhotra             w|WOwwwHOWwwwwwOWwwwwwOWwwHwwOwWW|WWw
+Gaurav Chopra              W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
+Harleen Kaur               W|WWOWWWWWOWWWWWWOWWWWWWOWWWWWWLL|HLW
+Karan Malhotra             w|wOWwwHOwWwwwwOwWwwwwOwWwHwwOwWW|WWw
 Neha Bansal                W|WOWWWHWWOWWWWWWOWWWWWWOWHWwWWOW|HWw
 Omkar Kadam                W|OWWWWHWWWWWWOWWWWWWOOWWWHWWOWWW|HWW
-Siddharth Jain             W|WWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
+Siddharth Jain             W|OWWWWOWWWWWWOWWWWWWOWWWWHWOWWWW|HWO
 Zoya Ansari                w|WwOwwHOwwwWwwOwwwwwwOwwwHwwOwww|Hww
 
 Coverage per brand-process (digit = people covering, '.' = not operating, '!' = short)
@@ -235,7 +261,7 @@ Coastal Candles / CS               365 1|1111111111111111111111111111111|111
 Harvest Snacks / ACC               NPH 1|11111.111111111111111111.111111|.11
 Harvest Snacks / CS                NPH 1|11111.111112111111111111.111111|.11
 Helix Sports Nutrition / COD       NPH 1|11111.111111111111111111.111111|.11
-Helix Sports Nutrition / CS        CUS 2|21222.221222.221222.2212.2.2212|.2.
+Helix Sports Nutrition / CS        CUS 2|11222.221222.221222.2212.2.2212|.2.
 Indigo Denim / CS                  NSP 1|11111.111111.111111.1111.1.1111|.1.
 Indigo Denim / RET                 NSP 1|11111.111111.111111.1111.1.1111|.1.
 Lumen Skincare / ACC               NSP 1|11111.111111.111111.1111.1.1111|.1.
@@ -246,7 +272,7 @@ Nimbus Gadgets / NDR               365 1|1111111111111111111111111111111|111
 Nova Wellness / ACC                NSP 1|11111.111111.111111.1111.1.1111|.1.
 Nova Wellness / CS                 365 1|1111111111111111111111111111111|111
 Nova Wellness / NDR                NPH 1|11111.111111111111111111.111111|.11
-Orbit Electronics / CS             365 3|2332323233232222223322332332223|233
+Orbit Electronics / CS             365 3|3232223333222332222223232322223|233
 Orchid Home / ACC                  NSP 1|11111.111111.111111.1111.1.1111|.1.
 Orchid Home / CS                   NSP 1|11111.111111.111111.1111.1.1111|.1.
 Pebble Toys / CS                   NPH 1|11111.111111111111111111.111111|.11
@@ -262,12 +288,12 @@ Urban Brew Coffee / NDR            NPH 1|11111.111111111111111111.111111|.11
 Verdant Tea Co / CS                NSP 1|11111.111111.111111.1111.1.1111|.1.
 Zephyr Apparel / CS                365 1|1111111111111111111111111111111|111
 
-Issues: 36 total
+Issues: 33 total
      5  ERROR WEEKLY_OFF_NOT_GRANTED
     16  INFO COMP_OFF_EARNED
-     6  WARNING CONSECUTIVE_DAYS_EXCEEDED
+     1  WARNING CONSECUTIVE_DAYS_EXCEEDED
      2  WARNING PENDING_LEAVE_CONFLICT
-     7  WARNING PREFERRED_OFF_NOT_HONOURED
+     9  WARNING PREFERRED_OFF_NOT_HONOURED
 
 ERRORs (5):
   [WEEKLY_OFF_NOT_GRANTED] Ananya Reddy has 0 of 1 required weekly off(s) in the week of 2026-11-30 to 2026-12-06. Every day they could be off is needed to keep coverage: Nimbus Gadgets / CS, Nimbus Gadgets / NDR. Locked days that cannot be changed here: 2026-11-30.
@@ -291,7 +317,7 @@ Comp-off credits earned this month: 16
 ```
 
 Roster dry-run 2027-01 (previous month 2026-12 generated in memory for boundary-week carry-over)
-32 employees, 34 brand-processes, 1120 cells, generated + validated + suggestions in 250 ms. Nothing was saved.
+32 employees, 34 brand-processes, 1120 cells, generated + validated + suggestions in 275 ms. Nothing was saved.
 Legend: W work, w works but covers nothing (backup pool / closed day), O weekly off, Ō locked weekly off, L leave, C comp-off, H holiday. '|' marks the month boundary (dates outside it are spill).
 
                            2233|0000000001111111111222222222233
@@ -302,37 +328,37 @@ Aarav Sharma               WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
 Divya Menon                Ōwww|HWwOwwwwWwOwwHwWwOwwwwWwOHwwwWw
 Ishita Verma               WWWW|WŌWWWWWWOWWWWWWOWWWWWWOWWWWWWOW
 Meera Iyer                 WWWW|HWŌWWWWWWOWLLHWWOWWWWWWOWHWWWWO
-Nisha Kapoor               ŌWWW|HWWOWWWWWWWWWHWWOWWWWWWOOHWWWWW
-Rahul Bhatt                Wwww|HŌwWwwwwOwwwwHwOWwwwwwOWWHwwwOw
+Nisha Kapoor               ŌWWW|HWWWWWOWWWWWWHWWOWWWWWWOOHWWWWW
+Rahul Bhatt                Wwww|HŌwwwwWwOwwwwHwOWwwwwwOWWHwwwOw
 Sanjay Patil               WWŌW|HWWWWOWWWWOWWHWWWWWOWWWWWHOWWWW
-Tanvi Joshi                WŌWw|HwwWOWwwwwWwwHOwwWOWwwwwWHWOwww
+Tanvi Joshi                WŌWw|HwwWOWwwwwWOwHwwwWOWwwwwWHWOwww
 Vikram Rao                 ŌWWW|WWWOWWWWWWOWWWWWWOWWWWWWOWWWWWW
 -- pod-bravo
 Ananya Reddy               WWWW|WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW
-Arjun Nambiar              ŌWWW|WWWOWWWWWWOWWWWWWOWWWWWWWWWWOWW
-Farhan Qureshi             wwww|HŌwwwwwwOWwwwHwOWwwwwwOWwHwwwOW
+Arjun Nambiar              ŌWWW|WWWOWWWWWWOWWWWWWOWWWWWWWHWWOWW
+Farhan Qureshi             wwww|HŌWwwwwwOWwwwHwOWwwwwwOWwHwwwOW
 Kabir Singh                WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
 Manish Gupta               Ōwww|HwWOwwwwwWOwwHwwWOwwwwwWOHwwwwW
-Pooja Desai                WŌWW|WWWWOWWWWWWWWHWWOWWWWWWOOWWWWWW
+Pooja Desai                WŌWW|WWWWOWWWWWWOWHWWWWWWOWWWOWWWWWW
 Rohan Mehta                Ōwww|HwwOwwwwwwOwwHwwwOwwwwwwOHwwwww
-Sneha Kulkarni             WWŌW|HWWWWOWWWWWOWWWWWWOLWWWWWOWWWWW
+Sneha Kulkarni             WWŌW|HWWWWOWWWWWWOWWWWWOLWWWWWWOWWWW
 -- pod-charlie
 Dev Choudhary              WŌww|HwwWOwwwwwWOwHwwwWOwwwwwWHOwwww
 Imran Sheikh               ŌWWW|WWWOWWWWWWOWWWWWWOWWWWWWOWWWWWW
-Kavya Hegde                WWWŌ|WWWWWWOWWWWWWOWWWWWWOWWWWWWOWWW
-Nikhil Agarwal             WWWW|HWŌWWWWWWOWWWWWWOWWWWWWOWHWWWWO
+Kavya Hegde                WWWŌ|WWWWWWOWWWOWWWWWWOWWWWWWOWWWWWW
+Nikhil Agarwal             WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
 Priya Nair                 WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
 Rekha Das                  Wwww|HŌwWwwwwOwWwwHwOwWwwwwOwWHwwwOw
 Shruti Banerjee            ŌWWW|HWWOWWWWWWOWWHWWWOWWWWWWOHWWWWW
 -- pod-delta
 Aditi Saxena               WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
-Gaurav Chopra              WWWW|ŌWWWWWWWWOWWWHWWOWWWWWWOWHWWWWO
-Harleen Kaur               WWLL|HLWWOWWWWWWOWWWWWWOWWWWWWOWWWWW
-Karan Malhotra             ŌwWW|WWwOWwwwwwOWwHwwwOWwwwwwOWwwwww
+Gaurav Chopra              WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
+Harleen Kaur               WWLL|HLWWOWWWWWWOWWWWWWOWWWWWOWWWWWW
+Karan Malhotra             ŌwWW|WWwOWwwwwwOWwHwwwwWOwwwwWHOwwww
 Neha Bansal                WWŌW|HWwWWOWWWwWWOHWWWWWOWWWWLHLWOWw
-Omkar Kadam                ŌWWW|HWWOWWWWWWWWWHWWOWWWWWWOWHWOWWW
+Omkar Kadam                ŌWWW|HWWWWWOWWWWWWHWWOWWWWWWOWHWOWWW
 Siddharth Jain             WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
-Zoya Ansari                Ōwww|HwwOwwwwwwOwwHwwwOwwwwwwWHwOwww
+Zoya Ansari                Ōwww|HwwOwwwwwwOwwHwwwwOwwwwwWHwOwww
 
 Coverage per brand-process (digit = people covering, '.' = not operating, '!' = short)
 Atlas Footwear / CS                NSP 1111|.1.111111.111.11.111111.1.1111.
@@ -354,7 +380,7 @@ Nimbus Gadgets / NDR               365 1111|1111111111111111111111111111111
 Nova Wellness / ACC                NSP 1111|.1.111111.111.11.111111.1.1111.
 Nova Wellness / CS                 365 1111|1111111111111111111111111111111
 Nova Wellness / NDR                NPH 1111|.111111111111.11111111111.11111
-Orbit Electronics / CS             365 2223|2332223333223233222233322233233
+Orbit Electronics / CS             365 2223|2332223333222233322223332223233
 Orchid Home / ACC                  NSP 1111|.1.111111.111.11.111111.1.1111.
 Orchid Home / CS                   NSP 1111|.1.111111.111.11.111111.1.1111.
 Pebble Toys / CS                   NPH 1111|.111111111111.11111111111.11111
@@ -370,11 +396,11 @@ Urban Brew Coffee / NDR            NPH 1111|.111111111111.11111111111.11111
 Verdant Tea Co / CS                NSP 1111|.1.111111.111.11.111111.1.1111.
 Zephyr Apparel / CS                365 1111|1111111111111111111111111111111
 
-Issues: 44 total
+Issues: 39 total
      4  ERROR WEEKLY_OFF_NOT_GRANTED
     24  INFO COMP_OFF_EARNED
-     8  WARNING CONSECUTIVE_DAYS_EXCEEDED
-     8  WARNING PREFERRED_OFF_NOT_HONOURED
+     2  WARNING CONSECUTIVE_DAYS_EXCEEDED
+     9  WARNING PREFERRED_OFF_NOT_HONOURED
 
 ERRORs (4):
   [WEEKLY_OFF_NOT_GRANTED] Ananya Reddy has 0 of 1 required weekly off(s) in the week of 2027-01-04 to 2027-01-10. Every day they could be off is needed to keep coverage: Nimbus Gadgets / CS, Nimbus Gadgets / NDR.
@@ -391,35 +417,81 @@ Comp-off credits earned this month: 24
 
 </details>
 
-### Are the tests real? Mutation check
+### The new tests can fail: mutation check
 
-I broke the engine three ways and ran the whole suite each time (then restored; 103/103 again):
+Each change was broken in turn and the whole suite run (then restored; 106/106 again).
 
-| Mutation                                        | Tests that failed                     |
-| ----------------------------------------------- | ------------------------------------- |
-| backup fill does nothing                        | 28 (S01 and others)                   |
-| weekly off granted even when it breaks coverage | 8 (S02, S06, S15, S17, S18, ...)      |
-| validator ignores a missing weekly off          | 8 (S02, S13, S14, S15, S17, S18, ...) |
+| Mutation                                                                          | Tests that failed                 |
+| --------------------------------------------------------------------------------- | --------------------------------- |
+| validator forgets the holiday rule (`effective` counts every off)                 | S14, S19, S19b                    |
+| generator charges the old +4 for a holiday                                        | S14, S15, S19, S20                |
+| repair pass disabled                                                              | S20                               |
+| **validator stops emitting `COVERAGE_GAP`** (generator and validator still agree) | 9, **including S14** (the oracle) |
 
-Coverage in tests is computed independently of the engine in `__tests__/fixtures.ts` (`coverageOf`, `offDates`), not by calling the validator. The ESLint purity rule was also shown to fail on a deliberate `@prisma/client` / `node:fs` / `process` import.
+The last row is the point of finding 3: with the mutation, "generator ERRORs == validator ERRORs" still holds,
+and only the independent oracle notices.
 
-## Deviations from CLAUDE.md
+## Response to review
 
-- **S03 as literally named cannot happen** (three people, one leave, min 2 leaves two). The test asserts the one-leave halves and also the case the assessment means (a second simultaneous leave, the seeded Orbit scenario). ASSUMPTIONS 30.
-- **`CASCADE_GAP` groups the coverage gaps but does not replace them**: the underlying `COVERAGE_GAP`s stay (the coverage strip needs them) and are listed in `groupedIssueIds`.
-- **A public holiday may host a weekly off** when it is the only free day, instead of raising a false error (Aarav, Kabir, Priya, Gaurav on Sunday 6 Dec). The generator prefers to give both. ASSUMPTIONS 24.
-- **Leave on a public holiday is `HOLIDAY`, a contract-fixed off beats a holiday, and a holiday employee may be called in as cover** (ranked last, earns a comp-off). ASSUMPTIONS 23, 26.
-- **`Suggestion.temporaryAssignments` is a list** (a pod-mate may cover two brand-processes at once, e.g. Nimbus CS and NDR).
-- **`generateRoster(..., { suggestions: false })`** skips suggestion pre-validation for bulk runs (tests, `prepare` steps). Default is on.
-- **The dry-run chains the previous month in memory** by default (`--no-chain` turns it off).
-- Files and exports beyond the plan's list are noted under Done.
+1. **[BLOCKER] holiday-hosted weekly offs: fixed** in `generate.ts` (holiday cost `+500`, offs counted through
+   `weekOffs()`), `validate.ts` (a hosted off that does not count raises `WEEKLY_OFF_NOT_GRANTED`, message, verbatim from S19b: "A has 0 of 1 required weekly off(s) in the week of 2026-12-21 to 2026-12-27. The off was placed on public holiday Christmas Day (2026-12-25) although 2026-12-23, 2026-12-24, 2026-12-26, 2026-12-27 were free, so the employee loses the holiday."), and `state.ts` (`weekOffs`, shared so generator and validator cannot disagree).
+   - Tests: **S19** (Gaurav off on 2027-01-03 and `HOLIDAY` on 2027-01-01 in both the December draft and the
+     chained January draft; Aarav on 2026-12-06 still allowed and not flagged; every remaining hosted off is one the
+     oracle agrees was unavoidable, with the explicit list of 5). **S19b** is the validator-only test: a hand-built
+     draft with an avoidable off on Christmas Day gets `WEEKLY_OFF_NOT_GRANTED` naming "public holiday",
+     "Christmas Day", "2026-12-25" and a free date.
+   - Re-run dry-runs and the full list of the 5 remaining hosted offs, with reasons, are above.
+   - Fixed-day case (not in the review, found while doing this): a contract-fixed off that lands on a holiday used
+     to count as the weekly off. It now counts only if nothing else was free, so Siddharth gets a second, real off.
+2. **[MAJOR] avoidable `CONSECUTIVE_DAYS_EXCEEDED`: fixed** in `repair.ts`. Counts above: December 5 to 0,
+   January 7 to 1. Test **S20** asserts the only owners in both months are Ananya Reddy plus one allowlisted name.
+   - **I deviated from the suggested move rule, deliberately.** The review suggested moving the off of the week that
+     ends (or starts) the run to another day of the same week. I built that first (adjacent off, one move at a
+     time): it left December at 5 and January at 2. Three things defeated it: a public holiday can end a run
+     without being an off, so the off that bounds it can sit later in the week; one-at-a-time moves get stuck on
+     plateaus (Harleen's run needs two offs to change together); and three people sharing a minimum of 2 can only
+     be off on different days. So `repair.ts` now (a) for each over-limit employee, with everyone else fixed, works
+     out which days of each owned week can host their off without worsening coverage and **enumerates the
+     combinations exactly** (bounded), keeping the least total excess; then (b) **swaps two colleagues' off days**
+     in a week. Same safeguards as asked: accepted only if excess strictly falls, coverage is no worse on every
+     touched day (score stays under 1000), no pinned cell, no contract-fixed day, no holiday, deterministic order
+     (employee id, then date), bounded passes.
+   - **One case cannot be repaired and is allowlisted by name in S20 with the reason:** Arjun Nambiar, 19 to 25 Jan
+     2027, Orbit Electronics. Three people share a minimum of 2 (so at most one off a day) around the 26 Jan
+     holiday, which still needs 2 working. Moving his own off only trades one 7-day run for another; 25 Jan is
+     Pooja's off; rotating all three pushes Sneha (sick on 20 Jan) over her limit. It needs re-planning the three
+     together across several weeks. Ananya's run is inherent (no backup, no off possible).
+   - ASSUMPTIONS 31 rewritten, 32 added (the limit above and the preference trade-off).
+3. **[MAJOR] S14 was tautological: fixed.** `__tests__/oracle.ts` imports nothing from `state.ts`, `ctx.ts`,
+   `validate.ts` or `generate.ts`. From `draft.entries`, `input.assignments` and `requiredStaff` it counts, per
+   brand-process and in-month date, the entries with `status === "WORK"`, `coveredBrandProcessIds.includes(bp)` and
+   an assignment for that pair. S14 now asserts (a) every oracle shortfall has a matching `COVERAGE_GAP` or
+   `NO_ELIGIBLE_STAFF`, (b) every `COVERAGE_GAP` matches an oracle shortfall and its "has X of Y" numbers, (c) outside
+   Nimbus there are none (in fact there are none at all: Nimbus is never short on coverage, its errors are missing
+   weekly offs). For weekly offs, the oracle counts `WEEKLY_OFF` per owned full week with the holiday rule applied
+   and S14 asserts its set of missing weeks equals the reported `WEEKLY_OFF_NOT_GRANTED` set exactly.
+   - **Not vacuous, shown two ways.** (i) Before the fix, this oracle was RED: it flagged three employee-weeks the
+     engine's own validator let through (Arjun week of 21 Dec, Pooja and Siddharth week of 30 Nov), which is how
+     finding 1 was confirmed independently. (ii) The test breaks a roster by hand (Ishita and Divya both off on
+     16 Dec) and asserts the oracle and the validator both report the same two gaps; and the mutation above.
+   - The "generator == validator" assertion is kept as a regression guard but, as you said, is not relied on.
+
+## Deviations from CLAUDE.md and from the review
+
+- **The repair uses exact per-employee enumeration plus swaps** instead of the suggested single move (above).
+- **Holiday cost is +500, as suggested.** The oracle's "free day" is stricter than the engine's (it assumes no backup
+  fill), so it can only agree with the engine in one direction; S19 and S14 check both consistent outcomes.
+- **For the avoidability test, only non-holiday days count as free alternatives** (a week with two holidays would
+  otherwise be indifferent between them).
+- Test name `S19b` is an addition alongside the requested `S19`.
 
 ## Known gaps / risks
 
-- **Greedy, not optimal.** The planner is deterministic and never trades coverage for a weekly off, but it can leave a working run slightly over `maxConsecutiveDays` (a warning; 6 in December, 8 in January). Typical cause: a colleague's off forces a backup to work through. ASSUMPTIONS 31. A look-ahead or repair pass would fix it; I did not add one.
-- **Weights are hand-tuned** (ASSUMPTIONS 25). They are exercised by S01 to S18 and the seed, not by a search over alternatives.
-- **Some PREFERRED_OFF warnings are caused by the generator's own choices** (e.g. Ishita on Sun 27 Dec, because Divya's off landed there). They are accurate but could be avoided with more look-ahead.
-- **Suggestion validation scope:** a suggestion is checked with the in-month validator, plus an explicit coverage check when it edits a spill date. Cross-month effects beyond that are not simulated.
-- **Retroactive changes:** a leave added for a date before `today` is not applied to the (pinned) past, so the validator can report `WORK_WHILE_UNAVAILABLE` for it. That is the intended "history is history" behaviour, but P3/P4 should surface it clearly.
-- **Performance:** about 350 ms per month on the seed including validation and suggestions. The 2x dataset timing the README question 7 needs belongs to P6's `pnpm metrics`.
-- No persistence yet (P3). `loadEngineInput` is tested only indirectly (the pure mapper is tested; the Prisma read is exercised by the dry-run).
+- **One 7-day run remains** (Arjun, 19 to 25 Jan), allowlisted with its reason; and Ananya's inherent ones.
+- **The repair optimises one person or one swapped pair at a time**, not whole groups (ASSUMPTIONS 32).
+- **`PREFERRED_OFF_NOT_HONOURED` rose slightly** (see the trade-off above). The weights are still hand-tuned.
+- **The 13 to 5 improvement depends on `weekOffs()` and the oracle agreeing.** They are independent
+  implementations; the one-way difference is the oracle being stricter.
+- **Performance:** about 0.4 s per month including validation and suggestions; the repair adds little. The 2x
+  dataset timing (README question 7) still belongs to P6's `pnpm metrics`.
+- No persistence yet (P3).

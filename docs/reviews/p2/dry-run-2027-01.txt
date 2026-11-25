@@ -1,6 +1,6 @@
 
 Roster dry-run 2027-01 (previous month 2026-12 generated in memory for boundary-week carry-over)
-32 employees, 34 brand-processes, 1120 cells, generated + validated + suggestions in 250 ms. Nothing was saved.
+32 employees, 34 brand-processes, 1120 cells, generated + validated + suggestions in 275 ms. Nothing was saved.
 Legend: W work, w works but covers nothing (backup pool / closed day), O weekly off, Ō locked weekly off, L leave, C comp-off, H holiday. '|' marks the month boundary (dates outside it are spill).
 
                            2233|0000000001111111111222222222233
@@ -11,37 +11,37 @@ Aarav Sharma               WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
 Divya Menon                Ōwww|HWwOwwwwWwOwwHwWwOwwwwWwOHwwwWw
 Ishita Verma               WWWW|WŌWWWWWWOWWWWWWOWWWWWWOWWWWWWOW
 Meera Iyer                 WWWW|HWŌWWWWWWOWLLHWWOWWWWWWOWHWWWWO
-Nisha Kapoor               ŌWWW|HWWOWWWWWWWWWHWWOWWWWWWOOHWWWWW
-Rahul Bhatt                Wwww|HŌwWwwwwOwwwwHwOWwwwwwOWWHwwwOw
+Nisha Kapoor               ŌWWW|HWWWWWOWWWWWWHWWOWWWWWWOOHWWWWW
+Rahul Bhatt                Wwww|HŌwwwwWwOwwwwHwOWwwwwwOWWHwwwOw
 Sanjay Patil               WWŌW|HWWWWOWWWWOWWHWWWWWOWWWWWHOWWWW
-Tanvi Joshi                WŌWw|HwwWOWwwwwWwwHOwwWOWwwwwWHWOwww
+Tanvi Joshi                WŌWw|HwwWOWwwwwWOwHwwwWOWwwwwWHWOwww
 Vikram Rao                 ŌWWW|WWWOWWWWWWOWWWWWWOWWWWWWOWWWWWW
 -- pod-bravo
 Ananya Reddy               WWWW|WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW
-Arjun Nambiar              ŌWWW|WWWOWWWWWWOWWWWWWOWWWWWWWWWWOWW
-Farhan Qureshi             wwww|HŌwwwwwwOWwwwHwOWwwwwwOWwHwwwOW
+Arjun Nambiar              ŌWWW|WWWOWWWWWWOWWWWWWOWWWWWWWHWWOWW
+Farhan Qureshi             wwww|HŌWwwwwwOWwwwHwOWwwwwwOWwHwwwOW
 Kabir Singh                WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
 Manish Gupta               Ōwww|HwWOwwwwwWOwwHwwWOwwwwwWOHwwwwW
-Pooja Desai                WŌWW|WWWWOWWWWWWWWHWWOWWWWWWOOWWWWWW
+Pooja Desai                WŌWW|WWWWOWWWWWWOWHWWWWWWOWWWOWWWWWW
 Rohan Mehta                Ōwww|HwwOwwwwwwOwwHwwwOwwwwwwOHwwwww
-Sneha Kulkarni             WWŌW|HWWWWOWWWWWOWWWWWWOLWWWWWOWWWWW
+Sneha Kulkarni             WWŌW|HWWWWOWWWWWWOWWWWWOLWWWWWWOWWWW
 -- pod-charlie
 Dev Choudhary              WŌww|HwwWOwwwwwWOwHwwwWOwwwwwWHOwwww
 Imran Sheikh               ŌWWW|WWWOWWWWWWOWWWWWWOWWWWWWOWWWWWW
-Kavya Hegde                WWWŌ|WWWWWWOWWWWWWOWWWWWWOWWWWWWOWWW
-Nikhil Agarwal             WWWW|HWŌWWWWWWOWWWWWWOWWWWWWOWHWWWWO
+Kavya Hegde                WWWŌ|WWWWWWOWWWOWWWWWWOWWWWWWOWWWWWW
+Nikhil Agarwal             WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
 Priya Nair                 WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
 Rekha Das                  Wwww|HŌwWwwwwOwWwwHwOwWwwwwOwWHwwwOw
 Shruti Banerjee            ŌWWW|HWWOWWWWWWOWWHWWWOWWWWWWOHWWWWW
 -- pod-delta
 Aditi Saxena               WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
-Gaurav Chopra              WWWW|ŌWWWWWWWWOWWWHWWOWWWWWWOWHWWWWO
-Harleen Kaur               WWLL|HLWWOWWWWWWOWWWWWWOWWWWWWOWWWWW
-Karan Malhotra             ŌwWW|WWwOWwwwwwOWwHwwwOWwwwwwOWwwwww
+Gaurav Chopra              WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
+Harleen Kaur               WWLL|HLWWOWWWWWWOWWWWWWOWWWWWOWWWWWW
+Karan Malhotra             ŌwWW|WWwOWwwwwwOWwHwwwwWOwwwwWHOwwww
 Neha Bansal                WWŌW|HWwWWOWWWwWWOHWWWWWOWWWWLHLWOWw
-Omkar Kadam                ŌWWW|HWWOWWWWWWWWWHWWOWWWWWWOWHWOWWW
+Omkar Kadam                ŌWWW|HWWWWWOWWWWWWHWWOWWWWWWOWHWOWWW
 Siddharth Jain             WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
-Zoya Ansari                Ōwww|HwwOwwwwwwOwwHwwwOwwwwwwWHwOwww
+Zoya Ansari                Ōwww|HwwOwwwwwwOwwHwwwwOwwwwwWHwOwww
 
 Coverage per brand-process (digit = people covering, '.' = not operating, '!' = short)
 Atlas Footwear / CS                NSP 1111|.1.111111.111.11.111111.1.1111.
@@ -63,7 +63,7 @@ Nimbus Gadgets / NDR               365 1111|1111111111111111111111111111111
 Nova Wellness / ACC                NSP 1111|.1.111111.111.11.111111.1.1111.
 Nova Wellness / CS                 365 1111|1111111111111111111111111111111
 Nova Wellness / NDR                NPH 1111|.111111111111.11111111111.11111
-Orbit Electronics / CS             365 2223|2332223333223233222233322233233
+Orbit Electronics / CS             365 2223|2332223333222233322223332223233
 Orchid Home / ACC                  NSP 1111|.1.111111.111.11.111111.1.1111.
 Orchid Home / CS                   NSP 1111|.1.111111.111.11.111111.1.1111.
 Pebble Toys / CS                   NPH 1111|.111111111111.11111111111.11111
@@ -79,11 +79,11 @@ Urban Brew Coffee / NDR            NPH 1111|.111111111111.11111111111.11111
 Verdant Tea Co / CS                NSP 1111|.1.111111.111.11.111111.1.1111.
 Zephyr Apparel / CS                365 1111|1111111111111111111111111111111
 
-Issues: 44 total
+Issues: 39 total
      4  ERROR WEEKLY_OFF_NOT_GRANTED
     24  INFO COMP_OFF_EARNED
-     8  WARNING CONSECUTIVE_DAYS_EXCEEDED
-     8  WARNING PREFERRED_OFF_NOT_HONOURED
+     2  WARNING CONSECUTIVE_DAYS_EXCEEDED
+     9  WARNING PREFERRED_OFF_NOT_HONOURED
 
 ERRORs (4):
   [WEEKLY_OFF_NOT_GRANTED] Ananya Reddy has 0 of 1 required weekly off(s) in the week of 2027-01-04 to 2027-01-10. Every day they could be off is needed to keep coverage: Nimbus Gadgets / CS, Nimbus Gadgets / NDR.
