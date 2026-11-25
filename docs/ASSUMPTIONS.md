@@ -26,4 +26,26 @@ is recorded here as soon as it is made.
 7. **Required staff for a brand-process on a date** resolves as: `CoverageOverride` for that date,
    then the weekday minimum, then the default minimum, and only on days the brand-process operates.
 
+## Sample data (P1)
+
+8. **The sample company is fictional:** 32 employees, 4 pods, 20 brands, 34 brand-processes. Names, brands
+   and the holiday calendar are invented. The holiday on a Sunday (6 Dec 2026) is deliberate, to
+   exercise that edge case.
+9. **"Single-resource brand"** means exactly one distinct PRIMARY employee across all of the brand's
+   processes. BACKUP assignments do not count. The seed has 16 of 20 (80%).
+10. **Bench staff:** 10 of the 32 employees hold no PRIMARY assignment. They are the support pool that
+    provides BACKUP cover (one pod lead, Rohan Mehta, deliberately has no assignment at all).
+11. **`allocationPct`** is the share of an employee's day an assignment takes. A PRIMARY employee's
+    allocations sum to at most 100%. A BACKUP's value is the load they take on when they cover.
+12. **Shifts are same-day windows** (`shiftStart < shiftEnd`), e.g. 09:00 to 18:00 or 14:00 to 23:00.
+    Overnight shifts are not modelled. `maxDailyHours` defaults to 9, and a 09:00 to 18:00 shift is
+    exactly 9 hours.
+13. **A brand's owning pod is not a staffing limit.** Employees can be assigned across pods (for
+    example Gaurav Chopra of Delta covers Terra Organics, a Bravo brand).
+14. **`db:seed` resets the database.** It clears every table (including rosters) and re-inserts rows with
+    stable ids, so running it twice gives an identical database. It refuses a non-local database
+    unless `SEED_ALLOW_REMOTE=1`.
+15. **Dates in the schema are `YYYY-MM-DD` strings** and months are `YYYY-MM`; there are no `Date`
+    columns for calendar dates (only `createdAt` timestamps).
+
 _More assumptions are added per phase._

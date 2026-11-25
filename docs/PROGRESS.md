@@ -25,3 +25,7 @@ PDF/CLAUDE.md mismatches found so far: none.
 - **Vitest config is `.mts`** to silence a Vite ESM-loader warning; CI uses Node 22 (`engines` `>=20`).
 - **`db:seed` and `verify:seed` are stubs** that exit 1 with a message until P1 implements them.
 - **CI first run:** the push of the P0 commits (`5e0a467`) did not start a workflow run; the next push (`ac4ffa9`) did, and it passed all steps. `workflow_dispatch` was added so a run can be started by hand if that recurs.
+- **Local database for development** is Homebrew `postgresql@15` (`brew services start postgresql@15`, database `rosterwise`, `DATABASE_URL` in the git-ignored `.env`). Neon is only needed at P6.
+- **Seed checks run in CI without a database.** `scripts/seed-checks.ts` works on plain rows; `scripts/seed-checks.test.ts` runs it on `buildSeedData()` (plus negative tests that break the data), and `pnpm verify:seed` runs the same checks on the live DB.
+- **Reviewer's P1 pointers applied:** single-resource definition printed with the %, string dates, unique `Assignment(employeeId, brandProcessId)` and `BrandProcess(brandId, processId)`, idempotent seed.
+- **Schema vs section 3:** exactly per section 3. `RosterEntry` has an extra `(rosterId, date)` index for per-day views. `(brandProcessId, date)` is the unique key on `CoverageOverride`. Issue acknowledgements (`acknowledgeIssue`, P3) are not in section 3 and will be added in P3 if needed.
