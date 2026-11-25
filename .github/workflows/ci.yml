@@ -12,9 +12,25 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rosterwise_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       # prisma generate / next build never connect; a syntactically valid URL is enough.
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      # The integration tests (src/server/__tests__/*.int.test.ts) wipe and re-seed this database.
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rosterwise_test
     steps:
       - uses: actions/checkout@v4
 
@@ -31,5 +47,10 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm typecheck
+      # The P1 gate, against a real database: schema, idempotent seed, and every section 5 check.
+      - name: db:push, db:seed, verify:seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rosterwise_test
+        run: pnpm db:push && pnpm db:seed && pnpm verify:seed
       - run: pnpm test
       - run: pnpm build
