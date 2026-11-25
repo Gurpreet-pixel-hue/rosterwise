@@ -22,4 +22,5 @@ PDF/CLAUDE.md mismatches found so far: none.
   Replaced with the conventional implementation and removed that dependency.
 - **pnpm build scripts allow-listed** in `pnpm-workspace.yaml` (`@prisma/client`, `@prisma/engines`,
   `prisma`, `esbuild`) so `pnpm install` works in CI without interactive approval.
+- **Vitest config is `.mts`** to silence a Vite ESM-loader warning; CI uses Node 22 (`engines` `>=20`).
 - **`db:seed` and `verify:seed` are stubs** that exit 1 with a message until P1 implements them.
