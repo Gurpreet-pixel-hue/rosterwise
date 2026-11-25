@@ -1,0 +1,98 @@
+
+Roster dry-run 2027-01 (previous month 2026-12 generated in memory for boundary-week carry-over)
+32 employees, 34 brand-processes, 1120 cells, generated + validated + suggestions in 250 ms. Nothing was saved.
+Legend: W work, w works but covers nothing (backup pool / closed day), O weekly off, Ō locked weekly off, L leave, C comp-off, H holiday. '|' marks the month boundary (dates outside it are spill).
+
+                           2233|0000000001111111111222222222233
+                           8901|1234567890123456789012345678901
+                           MTWT|FSSMTWTFSSMTWTFSSMTWTFSSMTWTFSS
+-- pod-alpha
+Aarav Sharma               WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
+Divya Menon                Ōwww|HWwOwwwwWwOwwHwWwOwwwwWwOHwwwWw
+Ishita Verma               WWWW|WŌWWWWWWOWWWWWWOWWWWWWOWWWWWWOW
+Meera Iyer                 WWWW|HWŌWWWWWWOWLLHWWOWWWWWWOWHWWWWO
+Nisha Kapoor               ŌWWW|HWWOWWWWWWWWWHWWOWWWWWWOOHWWWWW
+Rahul Bhatt                Wwww|HŌwWwwwwOwwwwHwOWwwwwwOWWHwwwOw
+Sanjay Patil               WWŌW|HWWWWOWWWWOWWHWWWWWOWWWWWHOWWWW
+Tanvi Joshi                WŌWw|HwwWOWwwwwWwwHOwwWOWwwwwWHWOwww
+Vikram Rao                 ŌWWW|WWWOWWWWWWOWWWWWWOWWWWWWOWWWWWW
+-- pod-bravo
+Ananya Reddy               WWWW|WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW
+Arjun Nambiar              ŌWWW|WWWOWWWWWWOWWWWWWOWWWWWWWWWWOWW
+Farhan Qureshi             wwww|HŌwwwwwwOWwwwHwOWwwwwwOWwHwwwOW
+Kabir Singh                WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
+Manish Gupta               Ōwww|HwWOwwwwwWOwwHwwWOwwwwwWOHwwwwW
+Pooja Desai                WŌWW|WWWWOWWWWWWWWHWWOWWWWWWOOWWWWWW
+Rohan Mehta                Ōwww|HwwOwwwwwwOwwHwwwOwwwwwwOHwwwww
+Sneha Kulkarni             WWŌW|HWWWWOWWWWWOWWWWWWOLWWWWWOWWWWW
+-- pod-charlie
+Dev Choudhary              WŌww|HwwWOwwwwwWOwHwwwWOwwwwwWHOwwww
+Imran Sheikh               ŌWWW|WWWOWWWWWWOWWWWWWOWWWWWWOWWWWWW
+Kavya Hegde                WWWŌ|WWWWWWOWWWWWWOWWWWWWOWWWWWWOWWW
+Nikhil Agarwal             WWWW|HWŌWWWWWWOWWWWWWOWWWWWWOWHWWWWO
+Priya Nair                 WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
+Rekha Das                  Wwww|HŌwWwwwwOwWwwHwOwWwwwwOwWHwwwOw
+Shruti Banerjee            ŌWWW|HWWOWWWWWWOWWHWWWOWWWWWWOHWWWWW
+-- pod-delta
+Aditi Saxena               WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
+Gaurav Chopra              WWWW|ŌWWWWWWWWOWWWHWWOWWWWWWOWHWWWWO
+Harleen Kaur               WWLL|HLWWOWWWWWWOWWWWWWOWWWWWWOWWWWW
+Karan Malhotra             ŌwWW|WWwOWwwwwwOWwHwwwOWwwwwwOWwwwww
+Neha Bansal                WWŌW|HWwWWOWWWwWWOHWWWWWOWWWWLHLWOWw
+Omkar Kadam                ŌWWW|HWWOWWWWWWWWWHWWOWWWWWWOWHWOWWW
+Siddharth Jain             WWWW|HWŌWWWWWWOWWWHWWOWWWWWWOWHWWWWO
+Zoya Ansari                Ōwww|HwwOwwwwwwOwwHwwwOwwwwwwWHwOwww
+
+Coverage per brand-process (digit = people covering, '.' = not operating, '!' = short)
+Atlas Footwear / CS                NSP 1111|.1.111111.111.11.111111.1.1111.
+Cedar and Co Furniture / ACC       NSP 1111|.1.111111.111.11.111111.1.1111.
+Cedar and Co Furniture / CS        365 1111|1111111111111111111111111111111
+Coastal Candles / ACC              NPH 1111|.111111111111.11111111111.11111
+Coastal Candles / CS               365 1111|1111111111111111111111111111111
+Harvest Snacks / ACC               NPH 1111|.111111111111.11111111111.11111
+Harvest Snacks / CS                NPH 1111|.111111111111.11111111111.11111
+Helix Sports Nutrition / COD       NPH 1111|.111111111111.11111111111.11111
+Helix Sports Nutrition / CS        CUS 2212|.2.221222.221.22.221222.2.1212.
+Indigo Denim / CS                  NSP 1111|.1.111111.111.11.111111.1.1111.
+Indigo Denim / RET                 NSP 1111|.1.111111.111.11.111111.1.1111.
+Lumen Skincare / ACC               NSP 1111|.1.111111.111.11.111111.1.1111.
+Lumen Skincare / CS                NSP 1111|.1.111111.111.11.111111.1.1111.
+Mango Mobiles / CS                 NSP 1111|.1.111111.111.11.111111.1.1111.
+Nimbus Gadgets / CS                365 1111|1111111111111111111111111111111
+Nimbus Gadgets / NDR               365 1111|1111111111111111111111111111111
+Nova Wellness / ACC                NSP 1111|.1.111111.111.11.111111.1.1111.
+Nova Wellness / CS                 365 1111|1111111111111111111111111111111
+Nova Wellness / NDR                NPH 1111|.111111111111.11111111111.11111
+Orbit Electronics / CS             365 2223|2332223333223233222233322233233
+Orchid Home / ACC                  NSP 1111|.1.111111.111.11.111111.1.1111.
+Orchid Home / CS                   NSP 1111|.1.111111.111.11.111111.1.1111.
+Pebble Toys / CS                   NPH 1111|.111111111111.11111111111.11111
+Pebble Toys / NDR                  NPH 1111|.111111111111.11111111111.11111
+Pixel Pets / CS                    NSP 1111|.1.111111.111.11.111111.1.1111.
+Quartz Jewellery / ACC             NSP 1111|.1.111111.111.11.111111.1.1111.
+Quartz Jewellery / CS              NSP 1111|.1.111111.111.11.111111.1.1111.
+Saffron and Salt / CS              NPH 1111|.111111111111.11111111111.11111
+Saffron and Salt / RET             NSP 1111|.1.111111.111.11.111111.1.1111.
+Terra Organics / CS                NPH 1111|.111111111111.11111111111.11111
+Urban Brew Coffee / CS             365 1111|1111111111111111111111111111111
+Urban Brew Coffee / NDR            NPH 1111|.111111111111.11111111111.11111
+Verdant Tea Co / CS                NSP 1111|.1.111111.111.11.111111.1.1111.
+Zephyr Apparel / CS                365 1111|1111111111111111111111111111111
+
+Issues: 44 total
+     4  ERROR WEEKLY_OFF_NOT_GRANTED
+    24  INFO COMP_OFF_EARNED
+     8  WARNING CONSECUTIVE_DAYS_EXCEEDED
+     8  WARNING PREFERRED_OFF_NOT_HONOURED
+
+ERRORs (4):
+  [WEEKLY_OFF_NOT_GRANTED] Ananya Reddy has 0 of 1 required weekly off(s) in the week of 2027-01-04 to 2027-01-10. Every day they could be off is needed to keep coverage: Nimbus Gadgets / CS, Nimbus Gadgets / NDR.
+      -> REASSIGN_FROM_POD: Give Ananya Reddy the weekly off on 2027-01-04 and ask Farhan Qureshi (same pod, 0% allocated) to cover Nimbus Gadgets / CS and Nimbus Gadgets / NDR under a manager-approved temporary assignment.
+  [WEEKLY_OFF_NOT_GRANTED] Ananya Reddy has 0 of 1 required weekly off(s) in the week of 2027-01-11 to 2027-01-17. Every day they could be off is needed to keep coverage: Nimbus Gadgets / CS, Nimbus Gadgets / NDR.
+      -> REASSIGN_FROM_POD: Give Ananya Reddy the weekly off on 2027-01-11 and ask Farhan Qureshi (same pod, 0% allocated) to cover Nimbus Gadgets / CS and Nimbus Gadgets / NDR under a manager-approved temporary assignment.
+  [WEEKLY_OFF_NOT_GRANTED] Ananya Reddy has 0 of 1 required weekly off(s) in the week of 2027-01-18 to 2027-01-24. Every day they could be off is needed to keep coverage: Nimbus Gadgets / CS, Nimbus Gadgets / NDR.
+      -> REASSIGN_FROM_POD: Give Ananya Reddy the weekly off on 2027-01-18 and ask Farhan Qureshi (same pod, 0% allocated) to cover Nimbus Gadgets / CS and Nimbus Gadgets / NDR under a manager-approved temporary assignment.
+  [WEEKLY_OFF_NOT_GRANTED] Ananya Reddy has 0 of 1 required weekly off(s) in the week of 2027-01-25 to 2027-01-31. Every day they could be off is needed to keep coverage: Nimbus Gadgets / CS, Nimbus Gadgets / NDR.
+      -> REASSIGN_FROM_POD: Give Ananya Reddy the weekly off on 2027-01-25 and ask Farhan Qureshi (same pod, 0% allocated) to cover Nimbus Gadgets / CS and Nimbus Gadgets / NDR under a manager-approved temporary assignment.
+
+Comp-off credits earned this month: 24
