@@ -87,17 +87,23 @@ is recorded here as soon as it is made.
     id. Whoever works one earns a comp-off credit (`COMP_OFF_EARNED`, INFO; counted for in-month holidays only).
     Approved leave on a public holiday is `HOLIDAY`, not `LEAVE`, so the holiday is not charged against the leave.
     A contract-fixed off day beats a public holiday (`WEEKLY_OFF`).
-24. **A holiday does not replace the weekly off, but may host it.** The generator prefers to give both. If the only
-    free day in a week is a holiday (a brand closed on Sundays with a Sunday holiday), the holiday becomes
-    `WEEKLY_OFF` rather than raising a false error. A week with only `HOLIDAY` and no `WEEKLY_OFF` is still reported
-    by the validator.
+24. **A holiday does not replace the weekly off, but may host it as a last resort.** An off placed on a public
+    holiday costs the employee the holiday, so it counts toward the week **only if no other non-holiday day of
+    that Mon-Sun week could have hosted it** (every other day is pinned, not working, or needed to keep coverage
+    even after backups). The generator charges +500 for a holiday day (more than any ordinary day that keeps
+    coverage, less than the 1000 for "not granted"). The validator enforces the same rule through the same
+    function (`RosterState.weekOffs`), so a manager moving an off onto a holiday by hand gets
+    `WEEKLY_OFF_NOT_GRANTED` naming the holiday and the free day. A contract-fixed off that lands on a holiday
+    is forced (and counts only if nothing else was free), so a fixed-day employee with free days also gets a
+    real off that week and keeps the holiday. On the seed the only remaining holiday-hosted offs are the five on
+    Sun 6 Dec 2026, each unavoidable (tests S19, S19b).
 25. **Weekly-off placement.** Week by week, most-constrained employee first (fewest substitutes across their PRIMARY
     brand-processes, then id). A day scores: +1000 for each person it would leave short even after backups; +1 if
     one of their brand-processes operates; -5 preferred weekday; +3 per Sunday off already given when Sunday is an
-    operating day (rotation); +4 on a public holiday; +2 on a spill date; +2 per colleague sharing a brand-process
-    already away; +10 per day their working run is already past their limit; -20 for the day the previous draft used
-    (so a re-plan changes little). Lowest wins, earliest date breaks ties. A best score of 1000 or more means the
-    off is **not granted**; coverage beats a weekly off, and the validator reports it.
+    operating day (rotation); +500 on a public holiday (see 24); +2 on a spill date; +2 per colleague sharing a
+    brand-process already away; +10 per day their working run is already past their limit; -20 for the day the
+    previous draft used (so a re-plan changes little). Lowest wins, earliest date breaks ties. A best score of
+    1000 or more means the off is **not granted**; coverage beats a weekly off, and the validator reports it.
 26. **Backup fill.** A short brand-process pulls in an assignee who is working that day (PRIMARY first, then same pod,
     then lowest load) if their load stays at most 100% and the earliest-start-to-latest-end span of everything they
     cover stays within `maxDailyHours`. A person on a public holiday without approved leave may be called in, ranked
@@ -120,9 +126,17 @@ is recorded here as soon as it is made.
 30. **S03, read literally, cannot happen:** with three people, one leave leaves two and cannot break a minimum of 2.
     The test therefore also uses the case the assessment means (seeded as Orbit Electronics): a second simultaneous
     leave. The one-leave halves are asserted too.
-31. **Known limit of the greedy planner.** It can leave a working run slightly over `maxConsecutiveDays`
-    (`CONSECUTIVE_DAYS_EXCEEDED`, a warning), typically when a colleague's off day forces a backup to work through.
-    It never trades coverage for it. The dry-run shows these. Fixing it properly would need look-ahead or a
-    repair pass.
-
-_More assumptions are added per phase._
+31. **Repair pass for long working runs.** Weekly offs are placed one week at a time, which can leave a run over
+    `maxConsecutiveDays` (an early off one week, a late one the next). After placement, for each employee with a
+    run over their limit and with everyone else held fixed, the engine finds which days of each owned week could
+    host their off without leaving any day worse covered, enumerates the combinations and keeps the one with the
+    least total excess; then a second stage swaps two colleagues' off days in the same week. A change is applied
+    only if it strictly reduces excess and never touches a pinned cell, a contract-fixed day or a holiday.
+    Deterministic and bounded. It never trades coverage for it.
+32. **Known limit of the repair.** It optimises one person (or one swapped pair) at a time. A group that needs
+    re-planning together can be left with one 7-day run: on the seed, Arjun Nambiar, 19 to 25 Jan 2027
+    (Orbit Electronics, three people sharing a minimum of 2, around the 26 Jan holiday). Ananya Reddy's
+    run is inherent (Nimbus Gadgets, no backup, no weekly off possible). Test S20 allowlists Arjun by name.
+    Repairing preferences is a trade: moving an off to shorten a run can give up a preferred weekday, so
+    `PREFERRED_OFF_NOT_HONOURED` rose slightly (Dec 7 to 9, Jan 8 to 9) while the warning total fell.
+    _More assumptions are added per phase._
