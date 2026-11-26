@@ -112,3 +112,21 @@ export async function loadRosterPage(prisma: PrismaClient, month: string): Promi
     refs,
   };
 }
+
+/** id -> readable label for every kind of thing a master-data row can point at. */
+export async function loadLookups(prisma: PrismaClient) {
+  const [pods, employees, brands, processes, bps] = await Promise.all([
+    prisma.pod.findMany(),
+    prisma.employee.findMany(),
+    prisma.brand.findMany(),
+    prisma.process.findMany(),
+    prisma.brandProcess.findMany({ include: { brand: true, process: true } }),
+  ]);
+  return {
+    pod: Object.fromEntries(pods.map((p) => [p.id, p.name])),
+    employee: Object.fromEntries(employees.map((e) => [e.id, e.name])),
+    brandName: Object.fromEntries(brands.map((b) => [b.id, b.name])),
+    processCode: Object.fromEntries(processes.map((p) => [p.id, p.code])),
+    brandProcess: Object.fromEntries(bps.map((b) => [b.id, `${b.brand.name} / ${b.process.code}`])),
+  };
+}
