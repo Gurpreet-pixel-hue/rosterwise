@@ -212,3 +212,98 @@ looked for, so it appeared to survive. I redid it with a pattern that matches th
   suggestions, 0.4 s with). Fine now; caching would matter with many concurrent users.
 - **No route handlers**, only server actions. A CSV download (P5) will need one.
 - The UI that calls these actions is P4.
+
+## Response to review (round 1: CHANGES_REQUIRED, findings 1 to 4)
+
+Re-verified after the fixes: `pnpm format:check`, `pnpm lint` (0 warnings), `pnpm typecheck`, `pnpm build` exit 0;
+`pnpm test` **186/186** (12 files, 10 new tests, all in `src/server/__tests__/roster.int.test.ts`, real Postgres);
+`pnpm db:push` in sync, `db:seed` seeded, `verify:seed` 27/27. Engine untouched (`git diff src/engine` is empty).
+Schema: two nullable/defaulted columns (`IssueAck.message`, `CompOffCredit.publishedByRosterId`).
+
+1. **[MAJOR] boundary week: fixed, with one deliberate difference from the suggested rule (please rule on it).**
+   `services/roster.ts`: `loadDraftWithOwners` / `requireOwnCell` / `manualEdit`.
+   - **Overlay on read.** Every roster load (view, validate, acknowledge, publish gate, simulate, next generation)
+     replaces each cell dated in another month with the latest version of that month's roster, marked `locked`.
+     The stored copy is only the provisional plan from before the neighbour existed. It is done in the server
+     layer, the engine stays pure. `getRoster` also returns `foreignDates` (date to owning month) for the UI.
+   - **Refusal.** Editing a day that belongs to a month whose roster exists is `CONFLICT`: "2026-12-29 belongs to
+     the 2026-12 roster, which already exists, so it cannot be edited from the 2027-01 roster. Edit it in the
+     2026-12 roster; it then shows here." Preview and commit both refuse, and the commit re-checks **inside its
+     transaction**, so a neighbour generated between the two is still caught. With no neighbour roster the day is
+     provisional and editable (that is how December plans Sun 3 Jan for Aarav).
+   - **Both repros, re-run.** Jan editing Aarav on 29 Dec: refused. Dec editing Aarav to WORK on 3 Jan, once Jan
+     exists: refused. After Dec edits an owned day and after Dec v2, the two views agree on every shared cell
+     (helper `expectNoBoundaryDisagreement`, over 100 shared cells). When January has Aarav working on 3 Jan,
+     December's view shows `WEEKLY_OFF_NOT_GRANTED` for him, it is the only blocker, and `publishRoster` on
+     December returns `BLOCKED` naming it.
+   - **Where I differ from your wording.** You wrote "a cell belongs to the roster that owns its **week**". I kept
+     the engine's existing rule that a day belongs to the roster of the **month it falls in** (ASSUMPTIONS 22a),
+     and left the weekly-off _requirement_ with the week's owner. Reason, with evidence: the week-owner rule
+     deadlocks against a PUBLISHED neighbour. Test S18 is exactly that case (January published with WORK on 3 Jan,
+     December needs the off there). Under week-owner, December would have to edit a day that January's published
+     roster displays, changing a published roster underneath people (ASSUMPTIONS 40), and January would be
+     forbidden from editing December's week to get out of it. Under date-owner the way out exists: apply a
+     change in January (new draft), edit 3 Jan there, publish. Both of your reproduced failures are closed
+     either way, and nothing is silent. Full reasoning is ASSUMPTIONS 44. Known limit there: an edit's response
+     does not preview the _neighbour's_ issues; the neighbour shows them when opened or published.
+   - **Tests (a)(b)(c) as you specified:** "a day that belongs to the neighbour month's existing roster cannot be
+     edited here, in either direction, and nothing is written" (a); "an edit to a December-owned day shows in
+     January at once, and after regenerating December; the two never disagree" (b); "January working someone
+     December owes an off to is a blocking ERROR in December, never a silent mismatch" (c, on the issue route:
+     December cannot publish). Plus "until the neighbour has a roster ... may be edited" and "a neighbour roster
+     created between the preview check and the commit still refuses the edit" (a race test through a proxied
+     `$transaction`).
+
+2. **[MAJOR] change in a neighbour month's days: fixed by refusing, as you allowed, plus `affectedMonths`.**
+   `checkChangeScope` / `changeDateRange` in `services/roster.ts`. A date-bound change (leave, make unavailable,
+   remove leave, one-day override) whose dates all fall in another month is `CONFLICT` by both simulate and apply:
+   "This change falls on 2026-12-30 to 2026-12-31, which belongs to the 2026-12 roster, not 2027-01. Apply it from
+   the 2026-12 roster, which owns those days." Nothing is saved (row counts compared). A change that straddles two
+   months is allowed and returns `affectedMonths` (only months that have a roster), also written to the audit row
+   (`alsoAffectsMonths`); the other roster is not re-planned but its validator flags the damage (the test asserts
+   `WORK_WHILE_UNAVAILABLE` for Divya in December). Rule-wide changes have no dates and are never refused.
+   Your repro (Divya leave 30 to 31 Dec applied from January) is now refused. Tests: "is refused from the roster
+   that does not own those days, by preview and by apply, and saves nothing" (leave and a one-day override),
+   "a change that straddles two months is allowed, names the other month, ..." and "a rule-wide change ... is not
+   refused". ASSUMPTIONS 45.
+
+3. **[MINOR] acknowledgements keyed on id only: fixed.** `IssueAck.message` stores the issue's wording at the time.
+   An acknowledgement counts only while the issue reads exactly that (`unacknowledgedErrors`). A same-id issue
+   that now reads differently comes back as `changedSince` (with `previousMessage`), is a blocker again, and is
+   shown as "acknowledged earlier, changed since". This covers both a regenerate/apply (carried but not counted:
+   `changedSinceAcknowledged` is returned and audited next to `carriedAcknowledgements`) and a master-data change
+   inside the same version. Test: a Coastal Candles gap acknowledged, then a coverage override raises the minimum
+   (same id, new message): the issue is a blocker, publish is `BLOCKED`, regenerate reports
+   `changedSinceAcknowledged: 1`, and acknowledging the new wording clears it. ASSUMPTIONS 37.
+
+4. **[MINOR] comp-off credits never retracted: implemented rather than documented.** `CompOffCredit.publishedByRosterId`
+   marks credits a publish created. Publishing a version deletes the _unused_ credits an earlier publish of the same
+   month created for a holiday this version no longer has that person working; a credit already used is kept and
+   counted (`compOffCreditsKeptUsed`); a hand-entered credit has no marker and is never touched. The result and the
+   audit row carry both counts. Test: v1 published, one credit used, one hand-entered (for someone off on 25 Dec),
+   v2 takes two people off Christmas: the unused one is retracted, the used one and the hand-entered one stay,
+   the still-earned one stays. ASSUMPTIONS 38.
+
+### Are the new tests real? Mutation check (round 2)
+
+Each fix was broken in turn and `roster.int.test.ts` run (then restored; file byte-identical to the fixed version).
+
+| Mutation                                              | Tests that failed                                                                              |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| overlay removed (stored spill copy used as is)        | 2 (view follows December; December blocked by January's edit)                                  |
+| edit refusal removed from the manual edit             | 1 (neighbour-owned days cannot be edited, both directions)                                     |
+| edit refusal removed from the commit transaction only | 1 (the race test; **survived until I added it**)                                               |
+| change-scope check removed                            | 2 (refused change; straddling change names the other month)                                    |
+| acknowledgement ignores the stored message            | 1 (worse gap stops counting)                                                                   |
+| retraction removed                                    | 1                                                                                              |
+| retraction also deletes used credits                  | 1                                                                                              |
+| retraction also deletes hand-entered credits          | 1 (**survived until the hand-entered credit was given to someone who does not earn that day**) |
+
+Two mutations survived my first tests and led to a stronger test each (the race test; a manual credit that a careless
+retract would actually delete). One of my own mutations was malformed (inverted logic made 11 unrelated tests fail),
+so I discarded that result and redid it correctly.
+
+### Still open
+
+- The shared-passcode lock is P6, per the Owner ruling. Not part of this round.
+- Nothing pushed. CI's Postgres steps are unproven until the first push after PASS.

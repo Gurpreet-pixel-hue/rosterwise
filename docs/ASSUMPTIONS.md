@@ -156,12 +156,24 @@ is recorded here as soon as it is made.
     updated or deleted; a rule or minimum is changed; an override is upserted). The effect runs last, so a late
     failure rolls the new version and its entries back too. Regeneration keeps locked entries, and keeps
     everything before `today` when `today` is given.
-37. **Acknowledgements are per version, per stable issue id, ERRORs only, with a note of at least 3 characters.**
-    Publishing is blocked while any ERROR lacks one. They can be withdrawn on a draft. When a new version is
-    created (regenerate or apply), acknowledgements are **carried over only for ERRORs whose id still exists**;
-    anything new must be acknowledged again. The count carried is returned and written to the audit log.
+37. **Acknowledgements are per version, per stable issue id, ERRORs only, with a note of at least 3 characters,
+    and they are tied to the issue's wording.** The id is a hash of code + entity + date, so a gap that worsens
+    ("has 1 of 2" to "has 0 of 2") keeps its id. The acknowledgement therefore stores the message it was given
+    for and counts only while the issue still reads exactly that. If the same issue now reads differently, the
+    old acknowledgement is returned as `changedSince` (with the previous message) and the issue is a blocker
+    again, in the same version (a master-data change) as well as after a regenerate. Publishing is blocked while
+    any ERROR lacks a current acknowledgement. They can be withdrawn on a draft. When a new version is created
+    (regenerate or apply), acknowledgements are copied for ERRORs whose id still exists; the result reports how
+    many still match (`carriedAcknowledgements`) and how many were copied but have changed
+    (`changedSinceAcknowledged`). Anything new must be acknowledged again. Both counts go to the audit log.
 38. **Publishing creates comp-off credits** for public holidays worked inside the month, never twice for the same
-    employee and date, so re-publishing a later version adds only genuinely new credits.
+    employee and date, so re-publishing a later version adds only genuinely new credits. **It also retracts**
+    (P3 review, finding 4): a credit that an earlier publish of the same month created
+    (`CompOffCredit.publishedByRosterId`) for a holiday the newly published version no longer has that person
+    working is deleted if unused. One already used (`usedOn` set) is kept, because the day off was taken, and is
+    counted as `compOffCreditsKeptUsed` in the result and the audit row. A credit a manager entered by hand has
+    no `publishedByRosterId` and is never touched. A credit's holiday is always inside its own month, so only
+    that month's credits are candidates.
 39. **Employees are deactivated, not deleted.** A hard delete is refused if they lead a pod or appear in any saved
     roster. A deactivated employee drops out of new rosters and stays in old ones.
 40. **Master-data edits do not rewrite existing rosters.** They show up through the same validator (adding an approved
@@ -175,5 +187,36 @@ is recorded here as soon as it is made.
 43. **Integration tests run against a real Postgres** named by `TEST_DATABASE_URL` (CI uses a service container,
     local use `createdb rosterwise_test`). They wipe and re-seed it, so the name must contain "test" and differ
     from `DATABASE_URL`; otherwise they refuse to run. Without it they are skipped and say so.
+
+44. **A day belongs to the roster of the month it falls in; the weekly-off requirement belongs to the week's
+    owner (P3 review, finding 1).** The roster for December stores the whole planning window, so 1 to 3 Jan are
+    stored in it as well as in January's, and 28 to 31 Dec in January's. Each such cell has one authoritative
+    copy: the one in the roster of the month the date is in (this is what the generator already assumed,
+    22a). So:
+    - **Reads overlay.** Whenever a roster is loaded (view, validate, acknowledge, publish gate, simulate, next
+      generation), every cell dated in another month is replaced by the latest version of that month's roster
+      (when it exists), marked `locked`. The stored copy of a day is only the provisional plan from before the
+      neighbour existed. This happens in `loadDraft` in the server layer; the engine stays pure and unchanged.
+    - **Edits are refused for such days** (`CONFLICT`, naming the roster that owns the day), by preview and by
+      commit, and the commit re-checks inside its transaction, so a neighbour generated between preview and commit
+      is still caught. With no neighbour roster the day is provisional and may be edited (that is how December
+      plans Sunday 3 Jan for Aarav).
+    - **Consequences are visible, not silent.** If January then has someone working on a day December needed
+      for that person's weekly off, December's validator reports `WEEKLY_OFF_NOT_GRANTED`, which blocks
+      publishing December until fixed or acknowledged. The fix is made where the day lives (January).
+    - **Why not "the week's owner owns all seven days"?** The reviewer's wording was week-owner. I kept the engine's
+      existing date-owner rule because the week-owner rule deadlocks with a PUBLISHED neighbour (ASSUMPTIONS 22d, test S18:
+      January published with WORK on 3 Jan, December needs the off there; December would have to overwrite a
+      published roster, and January could not edit December's week to unblock it). Under date-owner the way out is
+      to apply a change in January (a new draft version), edit 3 Jan there and publish again.
+    - **Known limit:** the response to an edit does not preview the neighbour's issues; the neighbour shows them
+      the next time it is opened or published.
+45. **A change is applied from the roster whose days it touches (P3 review, finding 2).** A date-bound change (a
+    leave, "make unavailable", removing a leave, a one-day coverage override) whose dates all fall in another
+    month is refused with `CONFLICT` naming the month to apply it from, because this roster re-plans only its own
+    days and "applied, nothing changed" would be false reassurance. A change that straddles two months is
+    allowed and returns `affectedMonths`: the other month's roster exists and is **not** re-planned (its
+    validator flags what the change breaks, e.g. `WORK_WHILE_UNAVAILABLE`); apply the same change there too. A
+    rule-wide change (rule, default or weekday minimum) has no dates and is never refused.
 
 _More assumptions are added per phase._
