@@ -15,7 +15,8 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "verify:seed": "tsx scripts/verify-seed.ts",
-    "roster:dry-run": "tsx scripts/roster-dry-run.ts"
+    "roster:dry-run": "tsx scripts/roster-dry-run.ts",
+    "walkthrough:p4": "tsx scripts/p4-walkthrough.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -41,6 +42,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.29",
     "eslint-config-prettier": "^10.1.8",
+    "playwright-core": "^1.65.1",
     "prettier": "^3.10.1",
     "prisma": "^6.19.3",
     "tailwindcss": "^4",

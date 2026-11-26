@@ -294,3 +294,20 @@ export function carriedOffWarning(
     text: `This is ${name}'s weekly off for ${monthTitle(owner)}'s week of ${dayLabel(mondayOf(date))}. Changing it puts an ERROR on the ${monthTitle(owner)} roster unless they get another off that week.`,
   };
 }
+
+/**
+ * The issues that concern a view: those about someone it shows, or about one of its brand-processes. Used to
+ * focus the Issues panel on the brand, pod, process or person being looked at (the publish gate still counts all).
+ */
+export function issuesInView<T extends Issue>(
+  issues: readonly T[],
+  employeeIds: ReadonlySet<string>,
+  bpIds: ReadonlySet<string>,
+): T[] {
+  return issues.filter(
+    (i) =>
+      (i.employeeId !== undefined && employeeIds.has(i.employeeId)) ||
+      (i.brandProcessId !== undefined && bpIds.has(i.brandProcessId)) ||
+      (i.employeeId === undefined && i.brandProcessId === undefined),
+  );
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { previewEditAction, saveEditAction } from "@/server/actions/roster";
 import type { ManualEditResult } from "@/server/services/roster";
 import type { DraftEntry, EntryStatus, Issue } from "@/engine/types";
@@ -106,10 +106,17 @@ export function CellDialog({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // reset when a different cell opens
+  // Reset the form when a DIFFERENT cell opens, and only then: a data refresh that lands while the dialog is
+  // open (a late router.refresh after an earlier action) must not wipe what the manager has just chosen.
   const targetKey = target ? `${target.employeeId}|${target.date}` : null;
+  const loadedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!entry) return;
+    if (!targetKey) {
+      loadedFor.current = null;
+      return;
+    }
+    if (!entry || loadedFor.current === targetKey) return;
+    loadedFor.current = targetKey;
     setStatus(entry.status);
     setCovered(new Set(entry.coveredBrandProcessIds));
     setPreview(null);

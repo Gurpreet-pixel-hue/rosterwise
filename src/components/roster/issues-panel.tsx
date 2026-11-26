@@ -16,6 +16,13 @@ import { dayLabel, groupBySeverity, issueTarget } from "@/lib/roster-view";
 import { cn } from "@/lib/utils";
 import { SeverityBadge } from "./status-style";
 
+/** The explanation starts with the issue message; show only what it adds. */
+function extra(explanation: string | undefined, message: string): string {
+  if (!explanation) return "";
+  const rest = explanation.startsWith(message) ? explanation.slice(message.length) : explanation;
+  return rest.trim();
+}
+
 const SUGGESTION_LABEL: Record<Suggestion["type"], string> = {
   USE_BACKUP: "Use backup",
   SWAP_OFF_DAY: "Swap off day",
@@ -25,6 +32,7 @@ const SUGGESTION_LABEL: Record<Suggestion["type"], string> = {
 
 export function IssuesPanel({
   issues,
+  emptyText,
   explanations,
   rosterId,
   editable,
@@ -33,6 +41,7 @@ export function IssuesPanel({
   onDone,
 }: {
   issues: IssueWithAck[];
+  emptyText: string;
   explanations: Record<string, string>;
   rosterId: string;
   editable: boolean;
@@ -113,9 +122,7 @@ export function IssuesPanel({
           {readOnlyReason}
         </p>
       )}
-      {issues.length === 0 && (
-        <p className="text-sm text-muted-foreground">No issues. This roster is valid.</p>
-      )}
+      {issues.length === 0 && <p className="text-sm text-muted-foreground">{emptyText}</p>}
       {groups.map(({ severity, issues: list }) =>
         list.length === 0 ? null : (
           <div key={severity}>
@@ -199,9 +206,9 @@ export function IssuesPanel({
 
                       {isOpen && severity !== "INFO" && (
                         <div className="space-y-2 pl-0.5">
-                          {explanations[issue.id] && explanations[issue.id] !== issue.message && (
+                          {extra(explanations[issue.id], issue.message) && (
                             <p className="text-xs leading-relaxed text-muted-foreground">
-                              {explanations[issue.id]}
+                              {extra(explanations[issue.id], issue.message)}
                             </p>
                           )}
                           {issue.changedSince && (

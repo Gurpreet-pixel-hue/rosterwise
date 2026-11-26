@@ -1,0 +1,40 @@
+$ tsx scripts/p4-walkthrough.ts
+01  screenshot 01-december-generated.png
+02  December generated: version 1, DRAFT
+03  Pod view: Alpha -> 20 rows (company has 66)
+04  Brand view: Coastal Candles -> 4 rows (company has 66)
+05  Process view: CS -> 49 rows (company has 66)
+06  screenshot 02-view-process-cs.png
+07  Employee view: Aarav Sharma -> 5 rows (company has 66)
+08  screenshot 02-view-employee-aarav.png
+09  screenshot 03-scenario1-coastal-with-backup-clean.png
+10  SCENARIO 1: Coastal Candles (Ishita, backup Divya): 0 short days
+11  screenshot 04-scenario2-nimbus-no-backup-conflict.png
+12  SCENARIO 2: Nimbus Gadgets: 5 WEEKLY_OFF_NOT_GRANTED for Ananya, with explanation and a jump to her cell
+13  screenshot 12-boundary-carried-off-warning-and-neighbour-impact.png
+14  BOUNDARY: Aarav's 3 Jan off warns about December, and the preview shows the new December ERROR
+15  screenshot 13-boundary-foreign-cell-read-only.png
+16  BOUNDARY: 29 Dec in the January roster is read-only with a link to December
+17  screenshot 05-scenario3-orbit-one-leave-absorbed.png
+18  screenshot 06-scenario3-second-leave-preview.png
+19  SCENARIO 3: a second simultaneous leave (Pooja, 17 Dec) previews COVERAGE_GAP 'has 1 of 2'; nothing saved
+20  screenshot 07-scenario4-approve-pending-leave-preview.png
+21  screenshot 08-scenario4-applied-version-diff.png
+22  SCENARIO 4: Aarav's pending leave approved -> version 2 (draft) with a diff against version 1
+23  screenshot 09-scenario4-roster-v2-with-cascade.png
+24  screenshot 10-suggestion-applied.png
+25  one-click suggestion applied through validation: "13 errors, 10 warnings" -> "12 errors, 10 warnings, 1 edited by hand"
+26  screenshot 11-cell-edit-delta-before-saving.png
+27  cell edit: delta shown before saving, then saved (Ishita off on 16 Dec opens two Coastal gaps)
+28  ... and the USE_BACKUP suggestion fixes it in one click
+29  screenshot 14-publish-blocked-by-errors.png
+30  screenshot 15-published.png
+31  PUBLISH: 13 errors acknowledged with notes, then published
+32  a published roster is read-only (the dialog says how to change it)
+33  screenshot 16-setup-brand-rules.png
+34  screenshot 17-setup-edit-brand-rule.png
+35  screenshot 18-setup-holidays-added.png
+36  setup CRUD: holiday added then deleted in the browser
+
+browser errors: 0
+WALKTHROUGH OK

@@ -9,6 +9,7 @@ import {
   filterOptions,
   groupBySeverity,
   issueTarget,
+  issuesInView,
   issuesByBpDay,
   issuesByCell,
   monthTitle,
@@ -255,5 +256,30 @@ describe("boundary-week ownership in the UI", () => {
     expect(carriedOffWarning("Aarav Sharma", "2027-01-10", "2027-01")).toBeNull();
     expect(carriedOffWarning("Aarav Sharma", "2027-01-03", "2026-12")).toBeNull(); // December's own week
     expect(dayLabel("2026-12-28")).toBe("Mon 28 Dec");
+  });
+});
+
+describe("focusing the issues on a view", () => {
+  const issue = (id: string, over: Partial<Issue>): Issue => ({
+    id,
+    code: "COVERAGE_GAP",
+    severity: "ERROR",
+    message: id,
+    suggestions: [],
+    ...over,
+  });
+  it("keeps issues about someone in the view or one of its brand-processes, and issues about neither", () => {
+    const all = [
+      issue("mine-person", { employeeId: "a" }),
+      issue("mine-bp", { brandProcessId: "x-cs" }),
+      issue("other", { employeeId: "c", brandProcessId: "y-cs" }),
+      issue("general", {}),
+    ];
+    expect(issuesInView(all, new Set(["a"]), new Set(["x-cs"])).map((i) => i.id)).toEqual([
+      "mine-person",
+      "mine-bp",
+      "general",
+    ]);
+    expect(issuesInView(all, new Set(), new Set()).map((i) => i.id)).toEqual(["general"]);
   });
 });

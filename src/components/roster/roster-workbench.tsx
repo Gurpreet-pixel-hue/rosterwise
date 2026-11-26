@@ -20,6 +20,7 @@ import {
   issueTarget,
   issuesByBpDay,
   issuesByCell,
+  issuesInView,
   monthTitle,
   shiftMonth,
   visibleBrandProcesses,
@@ -48,6 +49,7 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
   const [busy, setBusy] = useState<"generate" | "publish" | null>(null);
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [pendingJump, setPendingJump] = useState<string | null>(null);
+  const [onlyView, setOnlyView] = useState(true);
 
   const options = useMemo(() => filterOptions(kind, refs), [kind, refs]);
   const filterValue = options.some((o) => o.value === filter) ? filter : (options[0]?.value ?? "");
@@ -61,6 +63,12 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
   );
   const employeeIds = useMemo(() => new Set(employees.map((e) => e.id)), [employees]);
 
+  const bpIds = useMemo(() => new Set(bps.map((b) => b.id)), [bps]);
+  const scoped = onlyView && kind !== "company";
+  const shownIssues = useMemo(
+    () => (scoped && view ? issuesInView(view.issues, employeeIds, bpIds) : (view?.issues ?? [])),
+    [scoped, view, employeeIds, bpIds],
+  );
   const entries = useMemo(() => entryIndex(view?.entries ?? []), [view]);
   const byCell = useMemo(() => issuesByCell(view?.issues ?? []), [view]);
   const byBp = useMemo(() => issuesByBpDay(view?.issues ?? []), [view]);
@@ -372,7 +380,7 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
                   [
                     [
                       "issues",
-                      `Issues (${view.issues.filter((i) => i.severity !== "INFO").length})`,
+                      `Issues (${shownIssues.filter((i) => i.severity !== "INFO").length})`,
                     ],
                     ["day", "Who's working"],
                   ] as const
@@ -392,9 +400,24 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
                   </button>
                 ))}
               </div>
+              {side === "issues" && kind !== "company" && (
+                <label className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={onlyView}
+                    onChange={(e) => setOnlyView(e.target.checked)}
+                  />
+                  Only issues in this view ({shownIssues.length} of {view.issues.length})
+                </label>
+              )}
               {side === "issues" ? (
                 <IssuesPanel
-                  issues={view.issues}
+                  issues={shownIssues}
+                  emptyText={
+                    scoped
+                      ? `No issues in this view (${view.issues.length - shownIssues.length} elsewhere in the roster).`
+                      : "No issues. This roster is valid."
+                  }
                   explanations={view.explanations}
                   rosterId={view.roster.id}
                   editable={editable}

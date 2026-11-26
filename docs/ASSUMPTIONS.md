@@ -226,4 +226,45 @@ is recorded here as soon as it is made.
     and the publish. Test: a writer holds the lock and withdraws every acknowledgement while a publish waits; the
     publish ends `BLOCKED` and the roster stays a DRAFT.
 
+## UI (P4)
+
+47. **The five views** (Company, Pod, Brand, Process, Employee) are filters over one roster, not separate data. Company
+    shows everyone active. Pod shows the pod's members. Brand and Process show everyone **assigned** (primary or backup)
+    to one of the brand's or process's brand-processes, so a backup from another pod appears on the brand they would
+    cover. Process groups by process code across brands. Employee shows one person and the brand-processes they are
+    assigned to. The coverage strip shows the brand-processes the view is about. Rules are in `src/lib/roster-view.ts`
+    and unit-tested; the page draws what they return.
+48. **The Issues panel is scoped to the view by default** (an "Only issues in this view" checkbox, off for Company):
+    issues about someone the view shows or about one of its brand-processes. The publish gate and the blockers count
+    always use the whole roster. Issues are grouped ERROR, WARNING, INFO; INFO (comp-off notes) starts collapsed, and
+    ERROR cards start collapsed when there are more than six.
+49. **A suggestion is re-derived on the server when applied.** The browser sends only the issue id and the suggestion's
+    index, never the edits, and the server applies them through the same validated edit path (`editCells`) that a manual
+    edit uses, in one transaction, audited with `via: suggestion ...`. `ACCEPT_GAP` is not an edit: it opens the
+    acknowledgement form.
+50. **Known limit: a "temporary assignment" from `REASSIGN_FROM_POD` is saved as an ordinary BACKUP assignment.** It needs
+    an explicit "I approve" click, is audited, and shows in Setup, Assignments, but nothing expires it. The manager
+    removes it by hand. A date-bounded assignment would need a schema change.
+51. **The cell dialog lets you pick only brand-processes the person is assigned to**, because the engine counts only
+    assignees as covering. A person with none is the backup pool; the dialog says so and points to Setup.
+52. **The edit dialog warns before saving, twice.** Statically, when the cell is a weekly off that serves another
+    month's week ("This is Aarav's weekly off for December's week of Mon 28 Dec..."), and from the live preview, which
+    now includes `neighbourImpact`: the issues the edit would add to or resolve in the neighbouring roster
+    (the P3 round 2 note, closing the limit in ASSUMPTIONS 44). A day owned by another month's roster is read-only, with a
+    link to that roster.
+53. **"Today" for re-planning is a fixed demo date** (`DEMO_TODAY = 2026-11-27`, `src/lib/config.ts`), not the clock. Otherwise
+    anyone opening the demo after December 2026 would find the whole month "history" and every change would re-plan
+    nothing. Real use would pass the actual date.
+54. **No login yet, so the audit actor is the constant `manager`** (`ACTOR`). The shared-passcode session of P6 replaces it
+    with a name from the signed cookie, on the server.
+55. **A "what if" never saves.** Preview calls `simulateChange`; Apply is enabled only for the inputs that were just
+    previewed, saves the change and a new draft version (parent = the base) in one transaction, and shows a diff of
+    that version against its parent. Applying to a published roster creates a new draft; the published one stays in
+    history. A change that falls wholly in another month is refused, and one that straddles two months names the
+    other (ASSUMPTIONS 45).
+56. **Dates in the grid are the whole Mon-Sun planning window**, so the boundary week appears at the edges, dimmed, in a
+    dashed cell when it belongs to the neighbouring roster. Letter codes (W O L C H U) carry the status, so colour is
+    never the only signal; markers: a dot for an issue on that day, `p` for pending leave (not applied), a small
+    dot for an edit by hand.
+
 _More assumptions are added per phase._
