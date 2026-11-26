@@ -804,4 +804,361 @@ describe.skipIf(!HAS_DB)("roster workflow (integration, real Postgres)", () => {
       expect((await entryRow(roster.id, ISHITA, "2026-12-16")).status).toBe("WORK");
     });
   });
+
+  // ---------------------------------------------------------------------------------------------
+  // P3 review round 1, findings 1 to 4.
+  const JAN = "2027-01";
+  const generateJan = () => generateMonth(prisma(), { month: JAN, actor: "tester" });
+  const cellKey = (e: { employeeId: string; date: string }) => `${e.employeeId}|${e.date}`;
+
+  /** Every cell both rosters hold must read the same in both views. Returns the shared cell count. */
+  async function expectNoBoundaryDisagreement(decId: string, janId: string): Promise<number> {
+    const [dec, jan] = await Promise.all([getRoster(prisma(), decId), getRoster(prisma(), janId)]);
+    const janByKey = new Map(jan.entries.map((e) => [cellKey(e), e]));
+    let shared = 0;
+    for (const d of dec.entries) {
+      const j = janByKey.get(cellKey(d));
+      if (!j) continue;
+      shared++;
+      expect({ k: cellKey(d), status: j.status, covered: j.coveredBrandProcessIds }).toEqual({
+        k: cellKey(d),
+        status: d.status,
+        covered: d.coveredBrandProcessIds,
+      });
+    }
+    return shared;
+  }
+
+  describe("boundary week: December and January share 28 Dec to 3 Jan (review finding 1)", () => {
+    const edit = (rosterId: string, employeeId: string, date: string, status = "WEEKLY_OFF") => ({
+      rosterId,
+      employeeId,
+      date,
+      status,
+      coveredBrandProcessIds: [],
+      actor: "tester",
+    });
+
+    it("a day that belongs to the neighbour month's existing roster cannot be edited here, in either direction, and nothing is written", async () => {
+      const dec = await generate();
+      const jan = await generateJan();
+      const before = await counts();
+
+      // January editing a December day (the reviewer's repro: Aarav on 29 Dec)
+      for (const run of [previewManualEdit, saveManualEdit]) {
+        const e = await failure(run(prisma(), edit(jan.roster.id, AARAV, "2026-12-29")));
+        expect(e.code).toBe("CONFLICT");
+        expect(e.message).toContain("belongs to the 2026-12 roster");
+        expect(e.message).toContain("Edit it in the 2026-12 roster");
+      }
+      // December editing a January day (the other repro: Aarav's carried off on 3 Jan)
+      for (const run of [previewManualEdit, saveManualEdit]) {
+        const e = await failure(run(prisma(), edit(dec.roster.id, AARAV, "2027-01-03", "WORK")));
+        expect(e.code).toBe("CONFLICT");
+        expect(e.message).toContain("belongs to the 2027-01 roster");
+      }
+      expect(await counts()).toEqual(before);
+    });
+
+    it("until the neighbour has a roster, the spill day is provisional and may be edited (it is how December plans 3 Jan)", async () => {
+      const dec = await generate();
+      const c = await saveManualEdit(prisma(), edit(dec.roster.id, AARAV, "2027-01-03", "WORK"));
+      expect(c.committed).toBe(true);
+      expect((await entryRow(dec.roster.id, AARAV, "2027-01-03")).status).toBe("WORK");
+    });
+
+    it("an edit to a December-owned day shows in January at once, and after regenerating December; the two never disagree", async () => {
+      const dec = await generate();
+      const jan = await generateJan();
+      expect(await expectNoBoundaryDisagreement(dec.roster.id, jan.roster.id)).toBeGreaterThan(100);
+
+      await saveManualEdit(prisma(), edit(dec.roster.id, ISHITA, "2026-12-29"));
+      // January's STORED copy is now out of date, but what January shows and validates is December's cell
+      expect((await entryRow(jan.roster.id, ISHITA, "2026-12-29")).status).toBe("WORK");
+      const janView = await getRoster(prisma(), jan.roster.id);
+      expect(janView.entries.find((e) => cellKey(e) === `${ISHITA}|2026-12-29`)).toMatchObject({
+        status: "WEEKLY_OFF",
+        locked: true,
+      });
+      expect(janView.foreignDates["2026-12-29"]).toBe("2026-12");
+      await expectNoBoundaryDisagreement(dec.roster.id, jan.roster.id);
+
+      // regenerate December (v2): January follows the new latest version
+      const dec2 = await generate();
+      expect(dec2.roster.version).toBe(2);
+      await expectNoBoundaryDisagreement(dec2.roster.id, jan.roster.id);
+    });
+
+    it("a neighbour roster created between the preview check and the commit still refuses the edit, and writes nothing", async () => {
+      const dec = await generate(); // no January roster yet: 3 Jan is provisional and editable
+      // Run the real service, but generate January just before its commit transaction starts.
+      const p = prisma();
+      let raced = false;
+      const racing = new Proxy(p, {
+        get(target, prop) {
+          if (prop === "$transaction") {
+            return async (fn: never, opts?: never) => {
+              if (!raced) {
+                raced = true;
+                await generateJan();
+              }
+              return target.$transaction(fn, opts);
+            };
+          }
+          const v = Reflect.get(target, prop, target);
+          return typeof v === "function" ? v.bind(target) : v;
+        },
+      });
+      const e = await failure(
+        saveManualEdit(racing, edit(dec.roster.id, AARAV, "2027-01-03", "WORK")),
+      );
+      expect(raced).toBe(true);
+      expect(e.code).toBe("CONFLICT");
+      expect(e.message).toContain("belongs to the 2027-01 roster");
+      expect((await entryRow(dec.roster.id, AARAV, "2027-01-03")).status).not.toBe("WORK");
+      expect(await p.auditLog.count({ where: { action: "MANUAL_EDIT" } })).toBe(0);
+    });
+
+    it("January working someone December owes an off to is a blocking ERROR in December, never a silent mismatch", async () => {
+      const dec = await generate();
+      const jan = await generateJan();
+      await ackAll(dec.roster.id); // Ananya's five: December is publishable
+      expect((await getRoster(prisma(), dec.roster.id)).blockers).toEqual([]);
+
+      // Aarav's weekly off for the 28 Dec week is Sun 3 Jan (a January day): January now has him working
+      await saveManualEdit(prisma(), edit(jan.roster.id, AARAV, "2027-01-03", "WORK"));
+
+      const decView = await getRoster(prisma(), dec.roster.id);
+      expect(decView.entries.find((e) => cellKey(e) === `${AARAV}|2027-01-03`)?.status).toBe(
+        "WORK",
+      );
+      const gap = decView.issues.find(
+        (i) => i.code === "WEEKLY_OFF_NOT_GRANTED" && i.employeeId === AARAV,
+      );
+      expect(gap).toBeDefined();
+      expect(decView.blockers.map((b) => b.id)).toEqual([gap!.id]);
+      const blocked = await failure(publishRoster(prisma(), { rosterId: dec.roster.id }));
+      expect(blocked.code).toBe("BLOCKED");
+      expect(blocked.message).toContain("1 ERROR(s) block publishing");
+      expect(
+        (await prisma().roster.findUniqueOrThrow({ where: { id: dec.roster.id } })).status,
+      ).toBe("DRAFT");
+    });
+  });
+
+  describe("a change that falls in another month's days (review finding 2)", () => {
+    const leave = (fromDate: string, toDate: string) => ({
+      type: "ADD_LEAVE" as const,
+      leave: {
+        employeeId: DIVYA,
+        fromDate,
+        toDate,
+        type: "PLANNED" as const,
+        status: "APPROVED" as const,
+      },
+    });
+
+    it("is refused from the roster that does not own those days, by preview and by apply, and saves nothing", async () => {
+      await generate();
+      const jan = await generateJan();
+      const before = await counts();
+      const sim = await failure(
+        simulateRosterChange(prisma(), {
+          rosterId: jan.roster.id,
+          change: leave("2026-12-30", "2026-12-31"),
+        }),
+      );
+      expect(sim.code).toBe("CONFLICT");
+      expect(sim.message).toContain("belongs to the 2026-12 roster, not 2027-01");
+      expect(sim.message).toContain("Apply it from the 2026-12 roster");
+      const app = await failure(
+        applyRosterChange(prisma(), {
+          rosterId: jan.roster.id,
+          change: leave("2026-12-30", "2026-12-31"),
+          actor: "tester",
+        }),
+      );
+      expect(app.code).toBe("CONFLICT");
+      // a one-day override on a December date is date-bound too
+      const ov = await failure(
+        applyRosterChange(prisma(), {
+          rosterId: jan.roster.id,
+          change: {
+            type: "CHANGE_MIN_STAFF",
+            brandProcessId: COASTAL_CS,
+            override: { date: "2026-12-30", minStaff: 2 },
+          },
+          actor: "tester",
+        }),
+      );
+      expect(ov.code).toBe("CONFLICT");
+      expect(await counts()).toEqual(before); // no leave, no version, no audit row
+    });
+
+    it("a change that straddles two months is allowed, names the other month, and that month's validator flags what it breaks", async () => {
+      const dec = await generate();
+      const jan = await generateJan();
+      const change = leave("2026-12-30", "2027-01-02");
+
+      const sim = await simulateRosterChange(prisma(), { rosterId: jan.roster.id, change });
+      expect(sim.affectedMonths).toEqual(["2026-12"]);
+      const fromDec = await simulateRosterChange(prisma(), { rosterId: dec.roster.id, change });
+      expect(fromDec.affectedMonths).toEqual([JAN]);
+
+      const applied = await applyRosterChange(prisma(), {
+        rosterId: jan.roster.id,
+        change,
+        actor: "tester",
+      });
+      expect(applied.affectedMonths).toEqual(["2026-12"]);
+      expect(applied.roster.version).toBe(2);
+      const audit = await prisma().auditLog.findFirstOrThrow({ where: { action: "APPLY_CHANGE" } });
+      expect(audit.after).toMatchObject({ alsoAffectsMonths: ["2026-12"] });
+      // December was NOT re-planned (still v1), and it is not silent: Divya is flagged working on leave
+      expect((await listRosterVersions(prisma(), "2026-12")).length).toBe(1);
+      const decView = await getRoster(prisma(), dec.roster.id);
+      expect(
+        decView.issues.some((i) => i.code === "WORK_WHILE_UNAVAILABLE" && i.employeeId === DIVYA),
+      ).toBe(true);
+    });
+
+    it("a rule-wide change (no dates) is not refused from either month", async () => {
+      await generate();
+      const jan = await generateJan();
+      const sim = await simulateRosterChange(prisma(), {
+        rosterId: jan.roster.id,
+        change: { type: "CHANGE_MIN_STAFF", brandProcessId: COASTAL_CS, defaultMinStaff: 1 },
+      });
+      expect(sim.affectedMonths).toEqual([]);
+    });
+  });
+
+  describe("acknowledgements are tied to the wording of the issue (review finding 3)", () => {
+    it("a gap acknowledged as it was stops counting once the same issue reads worse, in the same version and after regenerating", async () => {
+      const { roster } = await generate();
+      await saveManualEdit(prisma(), {
+        rosterId: roster.id,
+        employeeId: ISHITA,
+        date: "2026-12-16",
+        status: "WEEKLY_OFF",
+        coveredBrandProcessIds: [],
+        actor: "tester",
+      });
+      await ackAll(roster.id);
+      expect((await getRoster(prisma(), roster.id)).blockers).toEqual([]);
+      const gapBefore = (await getRoster(prisma(), roster.id)).issues.find(
+        (i) => i.code === "COVERAGE_GAP" && i.brandProcessId === COASTAL_CS,
+      )!;
+      expect(gapBefore.acknowledgement).not.toBeNull();
+
+      // the client now needs two people that day: same issue id, worse message
+      await createRecord(
+        prisma(),
+        "coverageOverride",
+        { brandProcessId: COASTAL_CS, date: "2026-12-16", minStaff: 2 },
+        "ops",
+      );
+      const view = await getRoster(prisma(), roster.id);
+      const gapAfter = view.issues.find(
+        (i) => i.code === "COVERAGE_GAP" && i.brandProcessId === COASTAL_CS,
+      )!;
+      expect(gapAfter.id).toBe(gapBefore.id);
+      expect(gapAfter.message).not.toBe(gapBefore.message);
+      expect(gapAfter.acknowledgement).toBeNull();
+      expect(gapAfter.changedSince).toMatchObject({
+        previousMessage: gapBefore.message,
+        note: "Accepted for the demo: no backup exists",
+      });
+      expect(view.blockers.map((b) => b.id)).toEqual([gapAfter.id]);
+      expect((await failure(publishRoster(prisma(), { rosterId: roster.id }))).code).toBe(
+        "BLOCKED",
+      );
+
+      // regenerating keeps the manual edit, so the worse gap carries as "changed since", not as acknowledged
+      const v2 = await generate();
+      expect(v2.changedSinceAcknowledged).toBe(1);
+      // Ananya's five carry unchanged. Coastal ACC's gap is gone (the regenerate lets a backup cover it), so nothing
+      // is carried for it; only the CS gap, whose wording changed, is copied as "changed since".
+      expect(v2.carriedAcknowledgements).toBe(5);
+      const v2View = await getRoster(prisma(), v2.roster.id);
+      expect(v2View.blockers.map((b) => b.id)).toEqual([gapAfter.id]);
+      expect(v2View.issues.find((i) => i.id === gapAfter.id)?.changedSince?.previousMessage).toBe(
+        gapBefore.message,
+      );
+
+      // acknowledging the new wording clears it
+      await acknowledgeIssue(prisma(), {
+        rosterId: v2.roster.id,
+        issueId: gapAfter.id,
+        note: "Client agreed to a thin day",
+        actor: "tester",
+      });
+      expect((await getRoster(prisma(), v2.roster.id)).blockers).toEqual([]);
+    });
+  });
+
+  describe("comp-off credits follow the published version (review finding 4)", () => {
+    const creditsFor = () =>
+      prisma().compOffCredit.findMany({ orderBy: [{ employeeId: "asc" }, { earnedOn: "asc" }] });
+    // a hand-entered credit for someone who is on HOLIDAY (not working) on 25 Dec, so a careless retract would take it
+
+    it("publishing v2 retracts an unused credit v1 created and v2 no longer earns, and keeps used and hand-entered ones", async () => {
+      const v1 = await generate();
+      await ackAll(v1.roster.id);
+      const offDuty = (await getRoster(prisma(), v1.roster.id)).entries.find(
+        (e) => e.date === "2026-12-25" && e.status === "HOLIDAY",
+      )!;
+      const manual = await createRecord(
+        prisma(),
+        "compOffCredit",
+        { employeeId: offDuty.employeeId, earnedOn: "2026-12-25", reason: "entered by hand" },
+        "ops",
+      );
+      const pub1 = await publishRoster(prisma(), { rosterId: v1.roster.id, actor: "tester" });
+      expect(pub1.compOffCreditsRetracted).toBe(0);
+
+      // who works Christmas Day (25 Dec) in v1, with an auto credit
+      const autoXmas = (await creditsFor()).filter(
+        (c) => c.earnedOn === "2026-12-25" && c.publishedByRosterId === v1.roster.id,
+      );
+      expect(autoXmas.length).toBeGreaterThan(1);
+      const [dropped, used, kept] = autoXmas;
+      // one has used theirs
+      await prisma().compOffCredit.update({
+        where: { id: used.id },
+        data: { usedOn: "2027-01-12" },
+      });
+
+      // v2: take the "dropped" and "used" people off Christmas Day (a manual leave day), still a DRAFT
+      const v2 = await generate();
+      for (const c of [dropped, used]) {
+        await saveManualEdit(prisma(), {
+          rosterId: v2.roster.id,
+          employeeId: c.employeeId,
+          date: "2026-12-25",
+          status: "HOLIDAY",
+          coveredBrandProcessIds: [],
+          actor: "tester",
+        });
+      }
+      await ackAll(v2.roster.id);
+      const pub2 = await publishRoster(prisma(), { rosterId: v2.roster.id, actor: "tester" });
+
+      const after = await creditsFor();
+      const has = (id: string) => after.some((c) => c.id === id);
+      expect(has(dropped.id)).toBe(false); // no longer earned, never used: retracted
+      expect(has(used.id)).toBe(true); // already used: stays
+      expect(has(kept.id)).toBe(true); // still earned
+      expect(has(manual.id)).toBe(true); // entered by a manager, never touched
+      expect(pub2.compOffCreditsRetracted).toBe(1);
+      expect(pub2.compOffCreditsKeptUsed).toBe(1);
+      expect(
+        (
+          await prisma().auditLog.findFirstOrThrow({
+            where: { action: "PUBLISH", rosterId: v2.roster.id },
+          })
+        ).after,
+      ).toMatchObject({ compOffCreditsRetracted: 1, compOffCreditsKeptUsed: 1 });
+    });
+  });
 });

@@ -183,6 +183,9 @@ model CompOffCredit {
   earnedOn   String // YYYY-MM-DD
   reason     String
   usedOn     String? // YYYY-MM-DD, null while unused
+  // Set only on credits that publishing a roster created (a plain id, no relation: the credit outlives
+  // the version). A manager-entered credit leaves it null, so a later publish never touches it.
+  publishedByRosterId String?
 
   @@index([employeeId])
 }
@@ -262,6 +265,9 @@ model IssueAck {
   issueId   String
   note      String
   actor     String
+  // The issue's message when it was acknowledged. The id is stable (code + entity + date), so a gap that
+  // worsens ("1 of 2" -> "0 of 2") keeps its id; the acknowledgement counts only while the message is unchanged.
+  message   String   @default("")
   createdAt DateTime @default(now())
 
   @@unique([rosterId, issueId])

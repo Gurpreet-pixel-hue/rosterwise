@@ -60,7 +60,15 @@ export interface Acknowledgement {
   createdAt: string;
 }
 
-export type IssueWithAck = Issue & { acknowledgement: Acknowledgement | null };
+/**
+ * `acknowledgement` is set only while the issue reads exactly as it did when acknowledged. If the same
+ * issue (same stable id) now says something else, for example a gap that went from "1 of 2" to "0 of 2",
+ * the old acknowledgement is shown as `changedSince` and the issue is a blocker again.
+ */
+export type IssueWithAck = Issue & {
+  acknowledgement: Acknowledgement | null;
+  changedSince: (Acknowledgement & { previousMessage: string }) | null;
+};
 
 const summarise = (r: Roster): RosterSummary => ({
   id: r.id,
@@ -105,20 +113,78 @@ function requireDraft(roster: Roster): void {
   }
 }
 
-async function loadDraft(db: Db, roster: Roster): Promise<RosterDraft> {
+const monthOfDate = (date: string) => date.slice(0, 7);
+
+/**
+ * A roster stores a copy of every cell in its planning window, including the spill days of the
+ * neighbouring months (December holds 30 Nov and 1 to 3 Jan). A copy of a day belonging to ANOTHER month
+ * is not authoritative: that month's latest roster is. So on every read the spill cells are overlaid from
+ * the neighbour that owns the date, and the same overlay feeds the validator, the publish gate, simulation
+ * and the next generation. Two rosters therefore never disagree about a shared day, and a change in one
+ * shows up as real issues in the other (for example December's `WEEKLY_OFF_NOT_GRANTED` when January now
+ * has Aarav working on 3 Jan). With no neighbour roster the stored cell stays, as the provisional
+ * plan it is (ASSUMPTIONS 22b).
+ */
+async function loadDraftWithOwners(
+  db: Db,
+  roster: Roster,
+): Promise<{ draft: RosterDraft; foreignDates: Map<string, string> }> {
   const rows = await db.rosterEntry.findMany({
     where: { rosterId: roster.id },
     orderBy: [{ employeeId: "asc" }, { date: "asc" }],
   });
-  const entries: DraftEntry[] = rows.map((e) => ({
-    employeeId: e.employeeId,
-    date: e.date,
-    status: e.status,
-    coveredBrandProcessIds: [...e.coveredBrandProcessIds].sort(),
-    locked: e.locked,
-    source: e.source,
-  }));
-  return { month: roster.month, entries, compOffEarned: [] };
+  const spillByMonth = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const m = monthOfDate(r.date);
+    if (m === roster.month) continue;
+    const set = spillByMonth.get(m) ?? new Set<string>();
+    set.add(r.date);
+    spillByMonth.set(m, set);
+  }
+  const owned = new Map<string, (typeof rows)[number]>(); // `${employeeId}|${date}` -> the owner's cell
+  const foreignDates = new Map<string, string>(); // date -> the month whose roster owns it
+  for (const [month, dates] of spillByMonth) {
+    const neighbour = await latestRoster(db, month);
+    if (!neighbour) continue;
+    const theirs = await db.rosterEntry.findMany({
+      where: { rosterId: neighbour.id, date: { in: [...dates] } },
+    });
+    for (const t of theirs) {
+      owned.set(`${t.employeeId}|${t.date}`, t);
+      foreignDates.set(t.date, month);
+    }
+  }
+  const entries: DraftEntry[] = rows.map((e) => {
+    const t = owned.get(`${e.employeeId}|${e.date}`);
+    const src = t ?? e;
+    return {
+      employeeId: e.employeeId,
+      date: e.date,
+      status: src.status,
+      coveredBrandProcessIds: [...src.coveredBrandProcessIds].sort(),
+      // a day owned elsewhere cannot be changed from here, so it is a fixed input, as the generator treats it
+      locked: t ? true : e.locked,
+      source: src.source,
+    };
+  });
+  return { draft: { month: roster.month, entries, compOffEarned: [] }, foreignDates };
+}
+
+const loadDraft = async (db: Db, roster: Roster): Promise<RosterDraft> =>
+  (await loadDraftWithOwners(db, roster)).draft;
+
+/**
+ * A cell is edited in the roster of the month the DATE belongs to. A spill day whose month has its own
+ * roster is refused here: edit it there (it then shows in this roster by the overlay above).
+ */
+async function requireOwnCell(db: Db, roster: Roster, date: string): Promise<void> {
+  const month = monthOfDate(date);
+  if (month === roster.month) return;
+  if (!(await latestRoster(db, month))) return; // provisional spill: this roster is the only holder
+  throw new ServiceError(
+    "CONFLICT",
+    `${date} belongs to the ${month} roster, which already exists, so it cannot be edited from the ${roster.month} roster. Edit it in the ${month} roster; it then shows here.`,
+  );
 }
 
 const entryData = (rosterId: string, e: DraftEntry) => ({
@@ -131,7 +197,6 @@ const entryData = (rosterId: string, e: DraftEntry) => ({
   source: e.source,
 });
 
-const ids = (issues: Issue[]) => new Set(issues.map((i) => i.id));
 const codes = (issues: Issue[]) => issues.map((i) => i.code).sort();
 
 // ---------------------------------------------------------------------------------------------
@@ -142,6 +207,8 @@ export interface RosterView {
   roster: RosterSummary;
   isLatest: boolean;
   entries: DraftEntry[];
+  /** Dates in this roster's window that another month's roster owns, so they cannot be edited here. */
+  foreignDates: Record<string, string>;
   issues: IssueWithAck[];
   /** ERRORs that still block publishing. */
   blockers: Issue[];
@@ -153,27 +220,32 @@ export async function getRoster(
   opts: { suggestions?: boolean } = {},
 ): Promise<RosterView> {
   const roster = await rosterRow(prisma, rosterId);
-  const [input, draft, latest, acks] = await Promise.all([
+  const [input, loaded, latest, acks] = await Promise.all([
     loadEngineInput(prisma, roster.month),
-    loadDraft(prisma, roster),
+    loadDraftWithOwners(prisma, roster),
     latestRoster(prisma, roster.month),
     prisma.issueAck.findMany({ where: { rosterId } }),
   ]);
+  const { draft, foreignDates } = loaded;
   const issues = opts.suggestions ? analyzeRoster(input, draft) : validateRoster(input, draft);
   const ackById = new Map(acks.map((a) => [a.issueId, a]));
   const withAck: IssueWithAck[] = issues.map((i) => {
     const a = ackById.get(i.id);
+    const shape = a
+      ? { issueId: a.issueId, note: a.note, actor: a.actor, createdAt: a.createdAt.toISOString() }
+      : null;
+    const current = a !== undefined && a.message === i.message;
     return {
       ...i,
-      acknowledgement: a
-        ? { issueId: a.issueId, note: a.note, actor: a.actor, createdAt: a.createdAt.toISOString() }
-        : null,
+      acknowledgement: current ? shape : null,
+      changedSince: a && shape && !current ? { ...shape, previousMessage: a.message } : null,
     };
   });
   return {
     roster: summarise(roster),
     isLatest: latest?.id === roster.id,
     entries: draft.entries,
+    foreignDates: Object.fromEntries(foreignDates),
     issues: withAck,
     blockers: unacknowledgedErrors(issues, acks),
   };
@@ -194,21 +266,28 @@ export async function listRosterVersions(
 export interface GenerateResult {
   roster: RosterSummary;
   issues: Issue[];
-  /** Acknowledgements copied from the previous version because the same ERROR still exists. */
+  /** Acknowledgements carried from the previous version because the same ERROR still reads the same. */
   carriedAcknowledgements: number;
+  /** Acknowledged ERRORs that still exist but now read differently: they block publishing again. */
+  changedSinceAcknowledged: number;
 }
 
-/** Copy acknowledgements across versions for ERRORs whose stable id still exists. Returns how many. */
+/**
+ * Copy acknowledgements across versions for ERRORs whose stable id still exists. The stored message
+ * travels with the acknowledgement, so one whose issue has since changed is copied (to show it as
+ * "acknowledged earlier, changed since") but does not unblock publishing: `unacknowledgedErrors` compares
+ * messages. Returns how many still count, and how many were copied but no longer match.
+ */
 async function carryAcknowledgements(
   db: Db,
   fromRosterId: string | null,
   toRosterId: string,
   issues: Issue[],
-): Promise<number> {
-  if (!fromRosterId) return 0;
-  const errorIds = ids(issues.filter((i) => i.severity === "ERROR"));
+): Promise<{ carried: number; changedSince: number }> {
+  if (!fromRosterId) return { carried: 0, changedSince: 0 };
+  const errorById = new Map(issues.filter((i) => i.severity === "ERROR").map((i) => [i.id, i]));
   const acks = await db.issueAck.findMany({ where: { rosterId: fromRosterId } });
-  const keep = acks.filter((a) => errorIds.has(a.issueId));
+  const keep = acks.filter((a) => errorById.has(a.issueId));
   if (keep.length > 0) {
     await db.issueAck.createMany({
       data: keep.map((a) => ({
@@ -216,10 +295,12 @@ async function carryAcknowledgements(
         issueId: a.issueId,
         note: a.note,
         actor: a.actor,
+        message: a.message,
       })),
     });
   }
-  return keep.length;
+  const carried = keep.filter((a) => errorById.get(a.issueId)?.message === a.message).length;
+  return { carried, changedSince: keep.length - carried };
 }
 
 /**
@@ -258,7 +339,12 @@ export async function generateMonth(prisma: PrismaClient, raw: unknown): Promise
       await tx.rosterEntry.createMany({
         data: gen.draft.entries.map((e) => entryData(roster.id, e)),
       });
-      const carried = await carryAcknowledgements(tx, latest?.id ?? null, roster.id, gen.issues);
+      const { carried, changedSince } = await carryAcknowledgements(
+        tx,
+        latest?.id ?? null,
+        roster.id,
+        gen.issues,
+      );
       await writeAudit(tx, {
         actor,
         action: "GENERATE",
@@ -274,9 +360,15 @@ export async function generateMonth(prisma: PrismaClient, raw: unknown): Promise
           warnings: gen.issues.filter((i) => i.severity === "WARNING").length,
           lockedEntriesKept: previous?.entries.filter((e) => e.locked).length ?? 0,
           carriedAcknowledgements: carried,
+          changedSinceAcknowledged: changedSince,
         },
       });
-      return { roster: summarise(roster), issues: gen.issues, carriedAcknowledgements: carried };
+      return {
+        roster: summarise(roster),
+        issues: gen.issues,
+        carriedAcknowledgements: carried,
+        changedSinceAcknowledged: changedSince,
+      };
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
@@ -312,6 +404,7 @@ export async function manualEdit(
   const roster = await rosterRow(prisma, edit.rosterId);
   requireDraft(roster);
   await requireLatest(prisma, roster);
+  await requireOwnCell(prisma, roster, edit.date);
 
   const [input, draft] = await Promise.all([
     loadEngineInput(prisma, roster.month),
@@ -369,6 +462,7 @@ export async function manualEdit(
     const fresh = await rosterRow(tx, roster.id);
     requireDraft(fresh);
     await requireLatest(tx, fresh);
+    await requireOwnCell(tx, fresh, edit.date);
     await tx.rosterEntry.update({
       where: {
         rosterId_employeeId_date: {
@@ -425,6 +519,12 @@ export interface SimulationOutput {
   replannedWeeks: string[];
   errorsBefore: number;
   errorsAfter: number;
+  /**
+   * Other months whose roster exists and whose days this change also touches. This roster re-plans only its
+   * own days, so those rosters are NOT re-planned: apply the same change there too (their validator already
+   * flags what the change breaks, e.g. `WORK_WHILE_UNAVAILABLE`).
+   */
+  affectedMonths: string[];
 }
 
 /** Check the change refers to real rows and turn it into the engine's change type. */
@@ -461,6 +561,77 @@ function parseChange(input: EngineInput, raw: ChangeInputT): EngineChange {
       return raw as EngineChange;
   }
 }
+/**
+ * The dates a change is about, or null when it applies to every day (a rule or a standing minimum).
+ * A one-day override is date-bound; a default or weekday minimum is not.
+ */
+function changeDateRange(
+  input: EngineInput,
+  change: EngineChange,
+): { from: string; to: string } | null {
+  switch (change.type) {
+    case "ADD_LEAVE":
+      return { from: change.leave.fromDate, to: change.leave.toDate };
+    case "MAKE_UNAVAILABLE":
+      return { from: change.fromDate, to: change.toDate };
+    case "REMOVE_LEAVE": {
+      const l = input.leaves.find((x) => x.id === change.leaveId);
+      return l ? { from: l.fromDate, to: l.toDate } : null;
+    }
+    case "CHANGE_MIN_STAFF":
+      return change.override &&
+        change.defaultMinStaff === undefined &&
+        change.weekdayMinStaff === undefined
+        ? { from: change.override.date, to: change.override.date }
+        : null;
+    case "CHANGE_RULE":
+      return null;
+  }
+}
+
+/** Every YYYY-MM from `from` to `to`, without enumerating each day. */
+function monthsBetween(from: string, to: string): string[] {
+  const out: string[] = [];
+  let [y, m] = from.slice(0, 7).split("-").map(Number);
+  const end = to.slice(0, 7);
+  for (;;) {
+    const key = `${y}-${String(m).padStart(2, "0")}`;
+    if (key > end) break;
+    out.push(key);
+    if (m === 12) [y, m] = [y + 1, 1];
+    else m += 1;
+  }
+  return out;
+}
+
+/**
+ * A change re-plans one roster, and a roster plans only the days of its own month. A change that falls
+ * entirely in another month's days would be "applied" with nothing re-planned here, while the roster that
+ * owns those days is never touched. So it is refused, naming where to apply it. A change that only partly
+ * falls elsewhere is allowed and reports that month in `affectedMonths`.
+ */
+async function checkChangeScope(
+  db: Db,
+  roster: Roster,
+  input: EngineInput,
+  change: EngineChange,
+): Promise<string[]> {
+  const range = changeDateRange(input, change);
+  if (!range) return [];
+  const months = monthsBetween(range.from, range.to);
+  if (!months.includes(roster.month)) {
+    throw new ServiceError(
+      "CONFLICT",
+      `This change falls on ${range.from === range.to ? range.from : `${range.from} to ${range.to}`}, which belongs to the ${months.join(" and ")} roster, not ${roster.month}. Apply it from the ${months[0]} roster, which owns those days.`,
+    );
+  }
+  const others: string[] = [];
+  for (const m of months) {
+    if (m !== roster.month && (await latestRoster(db, m))) others.push(m);
+  }
+  return others;
+}
+
 async function simulate(
   prisma: PrismaClient,
   rosterId: string,
@@ -473,9 +644,10 @@ async function simulate(
     loadDraft(prisma, roster),
   ]);
   const change = parseChange(input, rawChange);
+  const affectedMonths = await checkChangeScope(prisma, roster, input, change);
   const issuesBefore = validateRoster(input, draft);
   const sim = simulateChange(input, { draft, issues: issuesBefore }, change);
-  return { roster, input, draft, change, issuesBefore, sim };
+  return { roster, input, draft, change, issuesBefore, sim, affectedMonths };
 }
 
 /** Preview a change without saving anything. */
@@ -484,7 +656,7 @@ export async function simulateRosterChange(
   raw: unknown,
 ): Promise<SimulationOutput> {
   const { rosterId, change, today } = parse(SimulateChangeInput, raw, "change");
-  const { issuesBefore, sim } = await simulate(prisma, rosterId, change, today);
+  const { issuesBefore, sim, affectedMonths } = await simulate(prisma, rosterId, change, today);
   return {
     changedCells: sim.changedCells,
     issueDelta: sim.issueDelta,
@@ -492,6 +664,7 @@ export async function simulateRosterChange(
     replannedWeeks: sim.replannedWeeks,
     errorsBefore: issuesBefore.filter((i) => i.severity === "ERROR").length,
     errorsAfter: sim.newIssues.filter((i) => i.severity === "ERROR").length,
+    affectedMonths,
   };
 }
 
@@ -499,6 +672,7 @@ export interface ApplyChangeResult extends SimulationOutput {
   roster: RosterSummary;
   issues: Issue[];
   carriedAcknowledgements: number;
+  changedSinceAcknowledged: number;
 }
 
 /** Make the master-data effect of a change (the leave, the rule, the minimum), inside the caller's transaction. */
@@ -585,7 +759,12 @@ export async function applyRosterChange(
   raw: unknown,
 ): Promise<ApplyChangeResult> {
   const { rosterId, change: rawChange, actor, today } = parse(ApplyChangeInput, raw, "change");
-  const { roster, change, issuesBefore, sim } = await simulate(prisma, rosterId, rawChange, today);
+  const { roster, change, issuesBefore, sim, affectedMonths } = await simulate(
+    prisma,
+    rosterId,
+    rawChange,
+    today,
+  );
   await requireLatest(prisma, roster);
 
   const summary: SimulationOutput = {
@@ -595,6 +774,7 @@ export async function applyRosterChange(
     replannedWeeks: sim.replannedWeeks,
     errorsBefore: issuesBefore.filter((i) => i.severity === "ERROR").length,
     errorsAfter: sim.newIssues.filter((i) => i.severity === "ERROR").length,
+    affectedMonths,
   };
 
   try {
@@ -612,7 +792,12 @@ export async function applyRosterChange(
       await tx.rosterEntry.createMany({
         data: sim.newDraft.entries.map((e) => entryData(next.id, e)),
       });
-      const carried = await carryAcknowledgements(tx, fresh.id, next.id, sim.newIssues);
+      const { carried, changedSince } = await carryAcknowledgements(
+        tx,
+        fresh.id,
+        next.id,
+        sim.newIssues,
+      );
       // Last, so that if the master-data effect fails the new version and its entries are rolled back too.
       await applyMasterDataEffect(tx, change);
       await writeAudit(tx, {
@@ -637,6 +822,8 @@ export async function applyRosterChange(
           issuesResolved: codes(sim.issueDelta.resolved),
           errors: summary.errorsAfter,
           carriedAcknowledgements: carried,
+          changedSinceAcknowledged: changedSince,
+          alsoAffectsMonths: summary.affectedMonths,
         },
       });
       return {
@@ -644,6 +831,7 @@ export async function applyRosterChange(
         roster: summarise(next),
         issues: sim.newIssues,
         carriedAcknowledgements: carried,
+        changedSinceAcknowledged: changedSince,
       };
     });
   } catch (e) {
@@ -670,12 +858,15 @@ export async function applyRosterChange(
 // Acknowledge and publish
 // ---------------------------------------------------------------------------------------------
 
+/** An ERROR is acknowledged only by a note on THIS wording of it (see IssueWithAck). */
 function unacknowledgedErrors(
   issues: Issue[],
-  acks: ReadonlyArray<{ issueId: string; note: string }>,
+  acks: ReadonlyArray<{ issueId: string; note: string; message: string }>,
 ): Issue[] {
-  const acked = new Set(acks.filter((a) => a.note.trim().length > 0).map((a) => a.issueId));
-  return issues.filter((i) => i.severity === "ERROR" && !acked.has(i.id));
+  const acked = new Map(
+    acks.filter((a) => a.note.trim().length > 0).map((a) => [a.issueId, a.message]),
+  );
+  return issues.filter((i) => i.severity === "ERROR" && acked.get(i.id) !== i.message);
 }
 
 /** Accept an ERROR with a note so the roster can still be published. Only a current ERROR can be acknowledged. */
@@ -707,8 +898,8 @@ export async function acknowledgeIssue(
   return prisma.$transaction(async (tx) => {
     const ack = await tx.issueAck.upsert({
       where: { rosterId_issueId: { rosterId, issueId } },
-      create: { rosterId, issueId, note, actor },
-      update: { note, actor },
+      create: { rosterId, issueId, note, actor, message: issue.message },
+      update: { note, actor, message: issue.message },
     });
     await writeAudit(tx, {
       actor,
@@ -763,6 +954,10 @@ export interface PublishResult {
   acknowledgedErrors: number;
   warnings: number;
   compOffCreditsCreated: number;
+  /** Credits an earlier publish of this month created that this version no longer earns (unused ones are deleted). */
+  compOffCreditsRetracted: number;
+  /** No-longer-earned credits that were kept because the employee has already used them. */
+  compOffCreditsKeptUsed: number;
 }
 
 /** Publish the latest draft. Blocked while any ERROR lacks an acknowledgement with a note. */
@@ -807,11 +1002,37 @@ export async function publishRoster(prisma: PrismaClient, raw: unknown): Promise
       });
       if (!has) {
         await tx.compOffCredit.create({
-          data: { employeeId: c.employeeId, earnedOn: c.earnedOn, reason: c.reason },
+          data: {
+            employeeId: c.employeeId,
+            earnedOn: c.earnedOn,
+            reason: c.reason,
+            publishedByRosterId: roster.id,
+          },
         });
         created++;
       }
     }
+    // Retract: a credit that an earlier publish of THIS month created, for a holiday this version no longer
+    // has that person working. Only publish-created credits are candidates (a manager-entered one has no
+    // publishedByRosterId), and a credit already used stays: the leave is taken, so it is counted, not deleted.
+    const stillEarned = new Set(earned.map((c) => `${c.employeeId}|${c.earnedOn}`));
+    const earlierVersions = await tx.roster.findMany({
+      where: { month: roster.month },
+      select: { id: true },
+    });
+    const stale = (
+      await tx.compOffCredit.findMany({
+        where: {
+          earnedOn: { startsWith: `${roster.month}-` },
+          publishedByRosterId: { in: earlierVersions.map((r) => r.id) },
+        },
+      })
+    ).filter((c) => !stillEarned.has(`${c.employeeId}|${c.earnedOn}`));
+    const retractable = stale.filter((c) => c.usedOn === null);
+    if (retractable.length > 0) {
+      await tx.compOffCredit.deleteMany({ where: { id: { in: retractable.map((c) => c.id) } } });
+    }
+    const keptUsed = stale.length - retractable.length;
     const acknowledgedErrors = issues.filter((i) => i.severity === "ERROR").length;
     const warnings = issues.filter((i) => i.severity === "WARNING").length;
     await writeAudit(tx, {
@@ -827,6 +1048,9 @@ export async function publishRoster(prisma: PrismaClient, raw: unknown): Promise
         acknowledgedErrors,
         warnings,
         compOffCreditsCreated: created,
+        compOffCreditsRetracted: retractable.length,
+        compOffCreditsKeptUsed: keptUsed,
+        retracted: retractable.map((c) => `${c.employeeId}|${c.earnedOn}`),
       },
     });
     return {
@@ -834,6 +1058,8 @@ export async function publishRoster(prisma: PrismaClient, raw: unknown): Promise
       acknowledgedErrors,
       warnings,
       compOffCreditsCreated: created,
+      compOffCreditsRetracted: retractable.length,
+      compOffCreditsKeptUsed: keptUsed,
     };
   });
 }
