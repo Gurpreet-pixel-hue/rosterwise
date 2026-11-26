@@ -7,6 +7,7 @@ import { toResult } from "../errors";
 import {
   acknowledgeIssue,
   applyRosterChange,
+  applySuggestionToRoster,
   generateMonth,
   getRoster,
   listRosterVersions,
@@ -40,6 +41,17 @@ export async function previewEditAction(input: unknown) {
 
 export async function saveEditAction(input: unknown) {
   const r = await toResult(() => saveManualEdit(prisma, input));
+  if (r.ok) revalidatePath("/roster", "layout");
+  return r;
+}
+
+/** Show what applying one of an issue's suggestions would do, without saving. */
+export async function previewSuggestionAction(input: unknown) {
+  return toResult(() => applySuggestionToRoster(prisma, input, { commit: false }));
+}
+
+export async function applySuggestionAction(input: unknown) {
+  const r = await toResult(() => applySuggestionToRoster(prisma, input, { commit: true }));
   if (r.ok) revalidatePath("/roster", "layout");
   return r;
 }

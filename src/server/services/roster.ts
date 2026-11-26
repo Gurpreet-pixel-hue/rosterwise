@@ -10,13 +10,17 @@
 //  - Publishing is blocked while any ERROR lacks an acknowledgement with a note.
 //  - Every mutation writes an AuditLog row, in the same transaction as the change.
 import { Prisma, type PrismaClient, type Roster } from "@prisma/client";
+import type { z } from "zod";
 import { analyzeRoster, compOffEarnedFor } from "../../engine/analyze";
 import { applyEdits } from "../../engine/edit";
+import { coverageTable, type CoverageTable } from "../../engine/coverage";
+import { explainIssue } from "../../engine/explain";
 import { diffRosters, type CellChange } from "../../engine/diff";
 import { generateRoster } from "../../engine/generate";
 import { simulateChange } from "../../engine/change";
 import type {
   DraftEntry,
+  EngineAssignment,
   EngineChange,
   EngineInput,
   Issue,
@@ -31,6 +35,8 @@ import { loadEngineInput } from "../loadEngineInput";
 import {
   AckInput,
   ApplyChangeInput,
+  ApplySuggestionInput,
+  EntryStatusSchema,
   GenerateInput,
   ManualEditInput,
   PublishInput,
@@ -222,6 +228,10 @@ export interface RosterView {
   issues: IssueWithAck[];
   /** ERRORs that still block publishing. */
   blockers: Issue[];
+  /** Required and covering staff per brand-process per day, from the SAME overlaid draft the validator saw. */
+  coverage: CoverageTable;
+  /** `explainIssue` text per issue id, in plain language for the issues panel. */
+  explanations: Record<string, string>;
 }
 
 export async function getRoster(
@@ -258,6 +268,8 @@ export async function getRoster(
     foreignDates: Object.fromEntries(foreignDates),
     issues: withAck,
     blockers: unacknowledgedErrors(issues, acks),
+    coverage: coverageTable(input, draft),
+    explanations: Object.fromEntries(issues.map((i) => [i.id, explainIssue(i, input)])),
   };
 }
 
@@ -395,6 +407,13 @@ export async function generateMonth(prisma: PrismaClient, raw: unknown): Promise
 // Manual edit: validate first, return the issue delta, commit only on request
 // ---------------------------------------------------------------------------------------------
 
+export interface NeighbourImpact {
+  /** The other month whose roster also holds this cell (and whose validator will see the edit). */
+  month: string;
+  added: Issue[];
+  resolved: Issue[];
+}
+
 export interface ManualEditResult {
   committed: boolean;
   /** Issues this edit would add or resolve (added ones come with suggestions). */
@@ -403,55 +422,144 @@ export interface ManualEditResult {
   errorsAfter: number;
   /** Total issues after the edit, so a caller can refresh without another round trip. */
   issuesAfter: Issue[];
+  /**
+   * What the edit does to the NEIGHBOURING month's roster, when that roster also holds the cell (Aarav's
+   * carried weekly off on 3 Jan is January's cell but December's week). Null when nothing is affected.
+   */
+  neighbourImpact: NeighbourImpact | null;
+  /** Temporary assignments created by a suggestion (REASSIGN_FROM_POD); empty for a plain edit. */
+  assignmentsCreated: number;
 }
 
-export async function manualEdit(
+export interface EditRequest {
+  rosterId: string;
+  edits: Array<{
+    employeeId: string;
+    date: string;
+    status: z.infer<typeof EntryStatusSchema>;
+    coveredBrandProcessIds: string[];
+  }>;
+  actor: string;
+  /** Manager-approved temporary assignments that go with the edits (a REASSIGN_FROM_POD suggestion). */
+  temporaryAssignments?: EngineAssignment[];
+  /** Written to the audit log, e.g. which suggestion this came from. */
+  via?: string;
+}
+
+/** What the neighbouring months' rosters would say if these cells changed (validator, same code). */
+async function neighbourImpactOf(
   prisma: PrismaClient,
-  raw: unknown,
+  roster: Roster,
+  edits: EditRequest["edits"],
+): Promise<NeighbourImpact | null> {
+  const months = new Set<string>();
+  for (const e of edits) {
+    const m = monthOfDate(e.date);
+    if (m !== roster.month) months.add(m);
+  }
+  // a cell is also in the neighbour's window when the date is in OUR month but inside its spill days
+  for (const m of [prevMonth(roster.month), nextMonth(roster.month)]) {
+    const n = await latestRoster(prisma, m);
+    if (!n) continue;
+    const held = await prisma.rosterEntry.findMany({
+      where: {
+        rosterId: n.id,
+        OR: edits.map((e) => ({ employeeId: e.employeeId, date: e.date })),
+      },
+      select: { employeeId: true, date: true },
+    });
+    if (held.length > 0) months.add(m);
+  }
+  months.delete(roster.month);
+  for (const m of [...months].sort()) {
+    const n = await latestRoster(prisma, m);
+    if (!n) continue;
+    const [input, withOwners] = await Promise.all([
+      loadEngineInput(prisma, m),
+      loadDraftWithOwners(prisma, n),
+    ]);
+    const hypothetical = applyEdits(withOwners.draft, edits, { locked: true, source: "MANUAL" });
+    const before = validateRoster(input, withOwners.draft);
+    const after = analyzeRoster(input, hypothetical);
+    const d = diffRosters(
+      { draft: withOwners.draft, issues: before },
+      { draft: hypothetical, issues: after },
+    ).issueDelta;
+    if (d.added.length > 0 || d.resolved.length > 0) return { month: m, ...d };
+  }
+  return null;
+}
+
+const shiftMonth = (month: string, by: number) => {
+  const [y, m] = month.split("-").map(Number);
+  const t = y * 12 + (m - 1) + by;
+  return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, "0")}`;
+};
+const prevMonth = (m: string) => shiftMonth(m, -1);
+const nextMonth = (m: string) => shiftMonth(m, 1);
+
+/**
+ * Validate one or several cell edits together (one roster, one transaction) and, with `commit`, save them.
+ * A suggestion is applied through here too, so there is only ONE path from "change a cell" to the database.
+ */
+export async function editCells(
+  prisma: PrismaClient,
+  req: EditRequest,
   opts: { commit: boolean },
 ): Promise<ManualEditResult> {
-  const edit = parse(ManualEditInput, raw, "edit");
-  const roster = await rosterRow(prisma, edit.rosterId);
+  const edits = req.edits.map((e) =>
+    parse(ManualEditInput, { ...e, rosterId: req.rosterId, actor: req.actor }, "edit"),
+  );
+  if (edits.length === 0) throw new ServiceError("VALIDATION", "There is nothing to edit.");
+  const cellIds = edits.map((e) => `${e.employeeId}|${e.date}`);
+  if (new Set(cellIds).size !== cellIds.length)
+    throw new ServiceError("VALIDATION", "The same cell appears twice in one edit.");
+  const roster = await rosterRow(prisma, req.rosterId);
   requireDraft(roster);
   await requireLatest(prisma, roster);
-  await requireOwnCell(prisma, roster, edit.date);
+  for (const e of edits) await requireOwnCell(prisma, roster, e.date);
 
-  const [input, draft] = await Promise.all([
+  const [input0, draft] = await Promise.all([
     loadEngineInput(prisma, roster.month),
     loadDraft(prisma, roster),
   ]);
+  const input: EngineInput = req.temporaryAssignments?.length
+    ? { ...input0, assignments: [...input0.assignments, ...req.temporaryAssignments] }
+    : input0;
 
-  const before = draft.entries.find(
-    (e) => e.employeeId === edit.employeeId && e.date === edit.date,
-  );
-  if (!before) {
-    throw new ServiceError(
-      "VALIDATION",
-      `There is no roster cell for employee "${edit.employeeId}" on ${edit.date} (it must be an active employee and a date in the planning window of ${roster.month}).`,
-    );
-  }
   const known = new Set(input.brandProcesses.map((b) => b.id));
-  const unknown = edit.coveredBrandProcessIds.filter((id) => !known.has(id));
-  if (unknown.length > 0)
-    throw new ServiceError("VALIDATION", `Unknown brand-process id(s): ${unknown.join(", ")}`);
-  if (edit.status !== "WORK" && edit.coveredBrandProcessIds.length > 0) {
-    throw new ServiceError(
-      "VALIDATION",
-      "Only a WORK entry can cover brand-processes. Clear the coverage or set the status to WORK.",
+  const befores = new Map<string, DraftEntry>();
+  for (const edit of edits) {
+    const before = draft.entries.find(
+      (e) => e.employeeId === edit.employeeId && e.date === edit.date,
     );
+    if (!before) {
+      throw new ServiceError(
+        "VALIDATION",
+        `There is no roster cell for employee "${edit.employeeId}" on ${edit.date} (it must be an active employee and a date in the planning window of ${roster.month}).`,
+      );
+    }
+    befores.set(`${edit.employeeId}|${edit.date}`, before);
+    const unknown = edit.coveredBrandProcessIds.filter((id) => !known.has(id));
+    if (unknown.length > 0)
+      throw new ServiceError("VALIDATION", `Unknown brand-process id(s): ${unknown.join(", ")}`);
+    if (edit.status !== "WORK" && edit.coveredBrandProcessIds.length > 0) {
+      throw new ServiceError(
+        "VALIDATION",
+        "Only a WORK entry can cover brand-processes. Clear the coverage or set the status to WORK.",
+      );
+    }
   }
 
-  const issuesBefore = validateRoster(input, draft);
+  const issuesBefore = validateRoster(input0, draft);
   const next = applyEdits(
     draft,
-    [
-      {
-        employeeId: edit.employeeId,
-        date: edit.date,
-        status: edit.status,
-        coveredBrandProcessIds: edit.coveredBrandProcessIds,
-      },
-    ],
+    edits.map((e) => ({
+      employeeId: e.employeeId,
+      date: e.date,
+      status: e.status,
+      coveredBrandProcessIds: e.coveredBrandProcessIds,
+    })),
     { locked: true, source: "MANUAL" },
   );
   const issuesAfter = analyzeRoster(input, next);
@@ -459,65 +567,169 @@ export async function manualEdit(
     { draft, issues: issuesBefore },
     { draft: next, issues: issuesAfter },
   ).issueDelta;
+  const neighbourImpact = await neighbourImpactOf(prisma, roster, req.edits);
   const result = {
     delta,
     errorsBefore: issuesBefore.filter((i) => i.severity === "ERROR").length,
     errorsAfter: issuesAfter.filter((i) => i.severity === "ERROR").length,
     issuesAfter,
+    neighbourImpact,
+    assignmentsCreated: req.temporaryAssignments?.length ?? 0,
   };
   if (!opts.commit) return { committed: false, ...result };
 
-  const after = next.entries.find((e) => e.employeeId === edit.employeeId && e.date === edit.date)!;
   await prisma.$transaction(async (tx) => {
     await lockRoster(tx, roster.id);
     const fresh = await rosterRow(tx, roster.id);
     requireDraft(fresh);
     await requireLatest(tx, fresh);
-    await requireOwnCell(tx, fresh, edit.date);
-    await tx.rosterEntry.update({
-      where: {
-        rosterId_employeeId_date: {
-          rosterId: roster.id,
-          employeeId: edit.employeeId,
-          date: edit.date,
+    for (const edit of edits) await requireOwnCell(tx, fresh, edit.date);
+    for (const a of req.temporaryAssignments ?? []) {
+      const created = await tx.assignment.upsert({
+        where: {
+          employeeId_brandProcessId: { employeeId: a.employeeId, brandProcessId: a.brandProcessId },
         },
-      },
-      data: {
-        status: after.status,
-        coveredBrandProcessIds: after.coveredBrandProcessIds,
-        locked: true,
-        source: "MANUAL",
-      },
-    });
-    await writeAudit(tx, {
-      actor: edit.actor,
-      action: "MANUAL_EDIT",
-      entity: "RosterEntry",
-      entityId: `${edit.employeeId}|${edit.date}`,
-      rosterId: roster.id,
-      before: {
-        status: before.status,
-        coveredBrandProcessIds: before.coveredBrandProcessIds,
-        locked: before.locked,
-        source: before.source,
-      },
-      after: {
-        status: after.status,
-        coveredBrandProcessIds: after.coveredBrandProcessIds,
-        locked: true,
-        source: "MANUAL",
-        issuesAdded: codes(delta.added),
-        issuesResolved: codes(delta.resolved),
-      },
-    });
+        create: {
+          employeeId: a.employeeId,
+          brandProcessId: a.brandProcessId,
+          role: a.role,
+          allocationPct: a.allocationPct,
+        },
+        update: {},
+      });
+      await writeAudit(tx, {
+        actor: req.actor,
+        action: "CREATE",
+        entity: "Assignment",
+        entityId: created.id,
+        rosterId: roster.id,
+        after: { ...a, via: req.via ?? "roster edit" },
+      });
+    }
+    for (const edit of edits) {
+      const before = befores.get(`${edit.employeeId}|${edit.date}`)!;
+      const after = next.entries.find(
+        (e) => e.employeeId === edit.employeeId && e.date === edit.date,
+      )!;
+      await tx.rosterEntry.update({
+        where: {
+          rosterId_employeeId_date: {
+            rosterId: roster.id,
+            employeeId: edit.employeeId,
+            date: edit.date,
+          },
+        },
+        data: {
+          status: after.status,
+          coveredBrandProcessIds: after.coveredBrandProcessIds,
+          locked: true,
+          source: "MANUAL",
+        },
+      });
+      await writeAudit(tx, {
+        actor: req.actor,
+        action: "MANUAL_EDIT",
+        entity: "RosterEntry",
+        entityId: `${edit.employeeId}|${edit.date}`,
+        rosterId: roster.id,
+        before: {
+          status: before.status,
+          coveredBrandProcessIds: before.coveredBrandProcessIds,
+          locked: before.locked,
+          source: before.source,
+        },
+        after: {
+          status: after.status,
+          coveredBrandProcessIds: after.coveredBrandProcessIds,
+          locked: true,
+          source: "MANUAL",
+          issuesAdded: codes(delta.added),
+          issuesResolved: codes(delta.resolved),
+          ...(req.via ? { via: req.via } : {}),
+        },
+      });
+    }
   });
   return { committed: true, ...result };
+}
+
+export async function manualEdit(
+  prisma: PrismaClient,
+  raw: unknown,
+  opts: { commit: boolean },
+): Promise<ManualEditResult> {
+  const e = parse(ManualEditInput, raw, "edit");
+  return editCells(
+    prisma,
+    {
+      rosterId: e.rosterId,
+      edits: [
+        {
+          employeeId: e.employeeId,
+          date: e.date,
+          status: e.status,
+          coveredBrandProcessIds: e.coveredBrandProcessIds,
+        },
+      ],
+      actor: e.actor,
+    },
+    opts,
+  );
 }
 
 export const previewManualEdit = (prisma: PrismaClient, raw: unknown) =>
   manualEdit(prisma, raw, { commit: false });
 export const saveManualEdit = (prisma: PrismaClient, raw: unknown) =>
   manualEdit(prisma, raw, { commit: true });
+
+/**
+ * Apply one of an issue's suggestions. The suggestion is re-derived on the server from the roster as it is
+ * NOW (the client sends only the issue id and which suggestion it chose), then applied through `editCells`, so
+ * it is validated and audited like any other edit. ACCEPT_GAP is not an edit: acknowledge the issue instead.
+ */
+export async function applySuggestionToRoster(
+  prisma: PrismaClient,
+  raw: unknown,
+  opts: { commit: boolean },
+): Promise<ManualEditResult & { suggestion: Suggestion }> {
+  const { rosterId, issueId, suggestionIndex, actor } = parse(
+    ApplySuggestionInput,
+    raw,
+    "suggestion",
+  );
+  const roster = await rosterRow(prisma, rosterId);
+  const [input, draft] = await Promise.all([
+    loadEngineInput(prisma, roster.month),
+    loadDraft(prisma, roster),
+  ]);
+  const issue = analyzeRoster(input, draft).find((i) => i.id === issueId);
+  if (!issue)
+    throw new ServiceError(
+      "NOT_FOUND",
+      `Issue "${issueId}" is not on this roster any more (it may have been resolved already).`,
+    );
+  const suggestion = issue.suggestions[suggestionIndex];
+  if (!suggestion)
+    throw new ServiceError("NOT_FOUND", `That issue has no suggestion number ${suggestionIndex}.`);
+  if (suggestion.type === "ACCEPT_GAP" || suggestion.edits.length === 0) {
+    throw new ServiceError(
+      "VALIDATION",
+      "Accepting a gap is not an edit: acknowledge the issue with a note instead.",
+    );
+  }
+  const result = await editCells(
+    prisma,
+    {
+      rosterId,
+      edits: suggestion.edits.map((e) => ({ ...e })),
+      actor,
+      temporaryAssignments: suggestion.temporaryAssignments,
+      via: `suggestion ${suggestion.type} for ${issue.code}`,
+    },
+    opts,
+  );
+  return { ...result, suggestion };
+}
 
 // ---------------------------------------------------------------------------------------------
 // Simulate and apply a change

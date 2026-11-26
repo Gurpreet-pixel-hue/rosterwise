@@ -16,3 +16,4 @@ export {
 } from "./diff";
 export { explainIssue } from "./explain";
 export { simulateChange, applyChange, type SimulationResult } from "./change";
+export { coverageTable, type CoverageTable, type CoverageCell } from "./coverage";

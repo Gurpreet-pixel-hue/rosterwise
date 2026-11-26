@@ -159,6 +159,13 @@ export const ManualEditInput = z.object({
   actor: actorSchema,
 });
 
+export const ApplySuggestionInput = z.object({
+  rosterId: id,
+  issueId: z.string().min(1).max(200),
+  suggestionIndex: z.number().int().min(0).max(20),
+  actor: actorSchema,
+});
+
 export const ChangeInput = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("ADD_LEAVE"),
