@@ -9,7 +9,7 @@ PDF/CLAUDE.md mismatches found so far: none.
 | P1 Data model + seed            | PASS (round 2)                                                                                                          | `docs/reviews/REQUEST-P1.md` | `docs/reviews/REVIEW-P1.md`   |
 | P2 Engine                       | PASSED, pushed, CI green ([run 45666301496](https://github.com/Gurpreet-pixel-hue/rosterwise/actions/runs/45666301496)) | `docs/reviews/REQUEST-P2.md` | `REVIEW-P2.md` PASS (round 2) |
 | P3 Persistence & server actions | PASS (round 2)                                                                                                          | `docs/reviews/REQUEST-P3.md` | `REVIEW-P3.md` PASS (round 2) |
-| P4 UI                           | Ready for Opus review                                                                                                   | `docs/reviews/REQUEST-P4.md` | `docs/reviews/REVIEW-P4.md`   |
+| P4 UI                           | PASS                                                                                                                    | `docs/reviews/REQUEST-P4.md` | `REVIEW-P4.md` PASS           |
 | P5 Optional features            | Not started                                                                                                             |                              |                               |
 | P6 Deploy & docs                | Not started                                                                                                             |                              |                               |
 
