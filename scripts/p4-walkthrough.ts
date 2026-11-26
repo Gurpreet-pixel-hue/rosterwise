@@ -1,8 +1,11 @@
 // Drives the running app in a real browser through the four seeded demo scenarios and the rest of P4, asserting
 // what it sees and saving screenshots to docs/reviews/p4/. It is the P4 gate evidence and a repeatable check.
 //
-//   pnpm db:seed && pnpm dev            # in one terminal (fresh seed: no rosters yet)
-//   pnpm walkthrough:p4                 # in another (BASE_URL overrides http://localhost:3000)
+//   pnpm db:seed && pnpm build && pnpm start   # in one terminal (fresh seed: no rosters yet)
+//   pnpm walkthrough:p4                        # in another (BASE_URL overrides http://localhost:3000)
+//
+// Run it against the PRODUCTION build, not `pnpm dev`: next dev can throw a dev-only
+// "clientReferenceManifest" 500 on a cold compile of a page, which is not an app bug.
 import { mkdirSync } from "node:fs";
 import { chromium, type Locator, type Page } from "playwright-core";
 
