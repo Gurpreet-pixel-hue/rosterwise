@@ -219,4 +219,11 @@ is recorded here as soon as it is made.
     validator flags what the change breaks, e.g. `WORK_WHILE_UNAVAILABLE`); apply the same change there too. A
     rule-wide change (rule, default or weekday minimum) has no dates and is never refused.
 
+46. **Writers on one roster are serialised by its row lock** (found by the automated security review after P3 passed).
+    Publishing, a committed edit, an acknowledgement or its withdrawal, and applying a change each take
+    `SELECT ... FOR UPDATE` on the roster row first. Publishing does its whole gate (load, validate, check
+    acknowledgements) **inside** that transaction, so an un-acknowledge or an edit cannot land between the check
+    and the publish. Test: a writer holds the lock and withdraws every acknowledgement while a publish waits; the
+    publish ends `BLOCKED` and the roster stays a DRAFT.
+
 _More assumptions are added per phase._

@@ -125,6 +125,16 @@ const monthOfDate = (date: string) => date.slice(0, 7);
  * has Aarav working on 3 Jan). With no neighbour roster the stored cell stays, as the provisional
  * plan it is (ASSUMPTIONS 22b).
  */
+/**
+ * Serialise writers on one roster: take its row lock for the rest of the transaction. Publishing, a committed
+ * edit, an acknowledgement or its withdrawal, and applying a change each lock first, so none of them can slip
+ * in between another's check and its write (a publish that validated, then an un-acknowledge, then the publish
+ * committing, would otherwise publish an ERROR that is no longer acknowledged).
+ */
+async function lockRoster(tx: Db, rosterId: string): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "Roster" WHERE "id" = ${rosterId} FOR UPDATE`;
+}
+
 async function loadDraftWithOwners(
   db: Db,
   roster: Roster,
@@ -459,6 +469,7 @@ export async function manualEdit(
 
   const after = next.entries.find((e) => e.employeeId === edit.employeeId && e.date === edit.date)!;
   await prisma.$transaction(async (tx) => {
+    await lockRoster(tx, roster.id);
     const fresh = await rosterRow(tx, roster.id);
     requireDraft(fresh);
     await requireLatest(tx, fresh);
@@ -779,6 +790,7 @@ export async function applyRosterChange(
 
   try {
     return await prisma.$transaction(async (tx) => {
+      await lockRoster(tx, roster.id);
       const fresh = await rosterRow(tx, roster.id);
       await requireLatest(tx, fresh);
       const next = await tx.roster.create({
@@ -896,6 +908,8 @@ export async function acknowledgeIssue(
     );
   }
   return prisma.$transaction(async (tx) => {
+    await lockRoster(tx, rosterId);
+    requireDraft(await rosterRow(tx, rosterId));
     const ack = await tx.issueAck.upsert({
       where: { rosterId_issueId: { rosterId, issueId } },
       create: { rosterId, issueId, note, actor, message: issue.message },
@@ -933,6 +947,8 @@ export async function removeAcknowledgement(
   const roster = await rosterRow(prisma, rosterId);
   requireDraft(roster);
   await prisma.$transaction(async (tx) => {
+    await lockRoster(tx, rosterId);
+    requireDraft(await rosterRow(tx, rosterId));
     const ack = await tx.issueAck.findUnique({
       where: { rosterId_issueId: { rosterId, issueId } },
     });
@@ -963,103 +979,105 @@ export interface PublishResult {
 /** Publish the latest draft. Blocked while any ERROR lacks an acknowledgement with a note. */
 export async function publishRoster(prisma: PrismaClient, raw: unknown): Promise<PublishResult> {
   const { rosterId, actor } = parse(PublishInput, raw, "publish request");
-  const roster = await rosterRow(prisma, rosterId);
-  requireDraft(roster);
-  await requireLatest(prisma, roster);
-  const [input, draft] = await Promise.all([
-    loadEngineInput(prisma, roster.month),
-    loadDraft(prisma, roster),
-  ]);
-  const issues = validateRoster(input, draft);
-  const acks = await prisma.issueAck.findMany({ where: { rosterId } });
-  const blockers = unacknowledgedErrors(issues, acks);
-  if (blockers.length > 0) {
-    throw new ServiceError(
-      "BLOCKED",
-      `${blockers.length} ERROR(s) block publishing: fix them, or acknowledge each with a note. First: ${blockers[0].message}`,
-      blockers.map((b) => ({
-        issueId: b.id,
-        code: b.code,
-        employeeId: b.employeeId ?? null,
-        date: b.date ?? null,
-        message: b.message,
-      })),
-    );
-  }
-  const earned = compOffEarnedFor(input, draft);
-  return prisma.$transaction(async (tx) => {
-    const fresh = await rosterRow(tx, roster.id);
-    requireDraft(fresh);
-    await requireLatest(tx, fresh);
-    const published = await tx.roster.update({
-      where: { id: roster.id },
-      data: { status: "PUBLISHED", publishedAt: new Date() },
-    });
-    let created = 0;
-    for (const c of earned) {
-      const has = await tx.compOffCredit.findFirst({
-        where: { employeeId: c.employeeId, earnedOn: c.earnedOn },
-      });
-      if (!has) {
-        await tx.compOffCredit.create({
-          data: {
-            employeeId: c.employeeId,
-            earnedOn: c.earnedOn,
-            reason: c.reason,
-            publishedByRosterId: roster.id,
-          },
-        });
-        created++;
+  return prisma.$transaction(
+    async (tx) => {
+      // Lock first, then check and write under the lock: the gate and the publish see one state.
+      await lockRoster(tx, rosterId);
+      const roster = await rosterRow(tx, rosterId);
+      requireDraft(roster);
+      await requireLatest(tx, roster);
+      const [input, draft] = await Promise.all([
+        loadEngineInput(tx as PrismaClient, roster.month),
+        loadDraft(tx, roster),
+      ]);
+      const issues = validateRoster(input, draft);
+      const acks = await tx.issueAck.findMany({ where: { rosterId } });
+      const blockers = unacknowledgedErrors(issues, acks);
+      if (blockers.length > 0) {
+        throw new ServiceError(
+          "BLOCKED",
+          `${blockers.length} ERROR(s) block publishing: fix them, or acknowledge each with a note. First: ${blockers[0].message}`,
+          blockers.map((b) => ({
+            issueId: b.id,
+            code: b.code,
+            employeeId: b.employeeId ?? null,
+            date: b.date ?? null,
+            message: b.message,
+          })),
+        );
       }
-    }
-    // Retract: a credit that an earlier publish of THIS month created, for a holiday this version no longer
-    // has that person working. Only publish-created credits are candidates (a manager-entered one has no
-    // publishedByRosterId), and a credit already used stays: the leave is taken, so it is counted, not deleted.
-    const stillEarned = new Set(earned.map((c) => `${c.employeeId}|${c.earnedOn}`));
-    const earlierVersions = await tx.roster.findMany({
-      where: { month: roster.month },
-      select: { id: true },
-    });
-    const stale = (
-      await tx.compOffCredit.findMany({
-        where: {
-          earnedOn: { startsWith: `${roster.month}-` },
-          publishedByRosterId: { in: earlierVersions.map((r) => r.id) },
+      const earned = compOffEarnedFor(input, draft);
+      const published = await tx.roster.update({
+        where: { id: roster.id },
+        data: { status: "PUBLISHED", publishedAt: new Date() },
+      });
+      let created = 0;
+      for (const c of earned) {
+        const has = await tx.compOffCredit.findFirst({
+          where: { employeeId: c.employeeId, earnedOn: c.earnedOn },
+        });
+        if (!has) {
+          await tx.compOffCredit.create({
+            data: {
+              employeeId: c.employeeId,
+              earnedOn: c.earnedOn,
+              reason: c.reason,
+              publishedByRosterId: roster.id,
+            },
+          });
+          created++;
+        }
+      }
+      // Retract: a credit that an earlier publish of THIS month created, for a holiday this version no longer
+      // has that person working. Only publish-created credits are candidates (a manager-entered one has no
+      // publishedByRosterId), and a credit already used stays: the leave is taken, so it is counted, not deleted.
+      const stillEarned = new Set(earned.map((c) => `${c.employeeId}|${c.earnedOn}`));
+      const earlierVersions = await tx.roster.findMany({
+        where: { month: roster.month },
+        select: { id: true },
+      });
+      const stale = (
+        await tx.compOffCredit.findMany({
+          where: {
+            earnedOn: { startsWith: `${roster.month}-` },
+            publishedByRosterId: { in: earlierVersions.map((r) => r.id) },
+          },
+        })
+      ).filter((c) => !stillEarned.has(`${c.employeeId}|${c.earnedOn}`));
+      const retractable = stale.filter((c) => c.usedOn === null);
+      if (retractable.length > 0) {
+        await tx.compOffCredit.deleteMany({ where: { id: { in: retractable.map((c) => c.id) } } });
+      }
+      const keptUsed = stale.length - retractable.length;
+      const acknowledgedErrors = issues.filter((i) => i.severity === "ERROR").length;
+      const warnings = issues.filter((i) => i.severity === "WARNING").length;
+      await writeAudit(tx, {
+        actor,
+        action: "PUBLISH",
+        entity: "Roster",
+        entityId: roster.id,
+        rosterId: roster.id,
+        before: { status: "DRAFT" },
+        after: {
+          status: "PUBLISHED",
+          version: published.version,
+          acknowledgedErrors,
+          warnings,
+          compOffCreditsCreated: created,
+          compOffCreditsRetracted: retractable.length,
+          compOffCreditsKeptUsed: keptUsed,
+          retracted: retractable.map((c) => `${c.employeeId}|${c.earnedOn}`),
         },
-      })
-    ).filter((c) => !stillEarned.has(`${c.employeeId}|${c.earnedOn}`));
-    const retractable = stale.filter((c) => c.usedOn === null);
-    if (retractable.length > 0) {
-      await tx.compOffCredit.deleteMany({ where: { id: { in: retractable.map((c) => c.id) } } });
-    }
-    const keptUsed = stale.length - retractable.length;
-    const acknowledgedErrors = issues.filter((i) => i.severity === "ERROR").length;
-    const warnings = issues.filter((i) => i.severity === "WARNING").length;
-    await writeAudit(tx, {
-      actor,
-      action: "PUBLISH",
-      entity: "Roster",
-      entityId: roster.id,
-      rosterId: roster.id,
-      before: { status: "DRAFT" },
-      after: {
-        status: "PUBLISHED",
-        version: published.version,
+      });
+      return {
+        roster: summarise(published),
         acknowledgedErrors,
         warnings,
         compOffCreditsCreated: created,
         compOffCreditsRetracted: retractable.length,
         compOffCreditsKeptUsed: keptUsed,
-        retracted: retractable.map((c) => `${c.employeeId}|${c.earnedOn}`),
-      },
-    });
-    return {
-      roster: summarise(published),
-      acknowledgedErrors,
-      warnings,
-      compOffCreditsCreated: created,
-      compOffCreditsRetracted: retractable.length,
-      compOffCreditsKeptUsed: keptUsed,
-    };
-  });
+      };
+    },
+    { timeout: 30_000 },
+  );
 }

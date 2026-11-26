@@ -600,6 +600,38 @@ describe.skipIf(!HAS_DB)("roster workflow (integration, real Postgres)", () => {
       ).toMatchObject({ status: "PUBLISHED", acknowledgedErrors: 5, compOffCreditsCreated: 16 });
     });
 
+    it("publishing checks the gate under the roster lock: an acknowledgement withdrawn while it waits still blocks it", async () => {
+      const { roster } = await generate();
+      await ackAll(roster.id); // publishable on the face of it
+      const p = prisma();
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      let locked!: () => void;
+      const hasLock = new Promise<void>((r) => (locked = r));
+      // another writer holds the roster's row lock and withdraws every acknowledgement before it lets go
+      const other = p.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Roster" WHERE "id" = ${roster.id} FOR UPDATE`;
+        locked();
+        await gate;
+        await tx.issueAck.deleteMany({ where: { rosterId: roster.id } });
+      });
+      await hasLock;
+      let settled = false;
+      const publishing = publishRoster(p, { rosterId: roster.id, actor: "tester" }).then(
+        () => "published" as const,
+        (e: unknown) => e as ServiceError,
+      );
+      void publishing.then(() => (settled = true));
+      await new Promise((r) => setTimeout(r, 400));
+      expect(settled).toBe(false); // it is waiting for the lock, not publishing on stale data
+      release();
+      await other;
+      const outcome = await publishing;
+      expect(outcome).not.toBe("published");
+      expect((outcome as ServiceError).code).toBe("BLOCKED");
+      expect((await p.roster.findUniqueOrThrow({ where: { id: roster.id } })).status).toBe("DRAFT");
+    });
+
     it("an acknowledgement can be withdrawn, which blocks publishing again", async () => {
       const { roster } = await generate();
       await ackAll(roster.id);
