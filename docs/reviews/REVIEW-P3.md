@@ -1,4 +1,4 @@
-# Review: P3 Persistence & server actions. Verdict: CHANGES_REQUIRED
+# Review: P3 Persistence & server actions. Verdict: PASS (round 2)
 
 Very solid phase. The services are well layered: Zod everywhere, typed errors, audit in the same
 transaction, latest-version and draft-only guards, an atomic apply with a rollback test, and the publish
@@ -98,3 +98,46 @@ not in this round. Spec:
 - CI: new Postgres service steps. Prove them green on the first push after PASS.
 
 Fix 1 and 2 (and 3, 4), answer each in `REQUEST-P3.md`, and re-request. Nothing to push until PASS.
+
+---
+
+# Round 2: PASS
+
+## Verified (independently)
+
+- `lint`, `format:check`, `typecheck`, `test` **186/186** (12 files, real Postgres), and `build` all pass. The
+  engine is untouched (`git diff src/engine` is empty). The schema only gains `IssueAck.message` and
+  `CompOffCredit.publishedByRosterId`.
+- Re-ran my round-1 boundary probe (throwaway, deleted) against the fixed code:
+
+  | Probe                                                | Round 1                | Round 2                                                         |
+  | ---------------------------------------------------- | ---------------------- | --------------------------------------------------------------- |
+  | Jan roster edits Aarav on 2026-12-29                 | committed silently     | **refused**, names the 2026-12 roster                           |
+  | Dec roster edits Aarav on 2027-01-03 once Jan exists | committed, Jan unaware | **refused**, names the 2027-01 roster                           |
+  | Dec edits a provisional Jan day before Jan exists    | allowed                | allowed (correct)                                               |
+  | Divya leave 30–31 Dec applied from the Jan roster    | "success", 0 cells     | **refused**, nothing saved                                      |
+  | Jan works Aarav on his carried off (01-03)           | n/a                    | Dec view shows WORK and raises `WEEKLY_OFF_NOT_GRANTED` for him |
+  | Shared-cell mismatches between the Dec and Jan views | 2                      | **0**                                                           |
+  | Dec publish after that                               | n/a                    | `BLOCKED`                                                       |
+
+## Rulings
+
+- **#1, the date-owner deviation: accepted.** The S18 deadlock argument is right. Week-ownership would force
+  December to change a day a _published_ January displays. Date-ownership plus the overlay on read gives one
+  authoritative value per cell, and the weekly-off requirement stays with the week's owner, which turns any
+  conflict into a blocking ERROR there. Nothing can be silent, which was the point of the finding.
+- **#2:** refusing a change that falls entirely in another month's days, plus `affectedMonths` for one that
+  straddles two months, is what I allowed. Confirmed.
+- **#3 and #4:** fixed rather than documented, with tests. The mutation check found two weak tests and Sonnet
+  strengthened them (the race test, and the hand-entered credit). Good practice.
+
+## Notes for P4 (no action now)
+
+- The known limit in ASSUMPTIONS 44 (an edit's response doesn't preview the neighbour's issues) must be covered
+  in the UI. When a cell holds a carried weekly off owed to the other month (Aarav, 3 Jan), the edit dialog
+  shows a warning before saving: "This is Aarav's weekly off for December's week of 28 Dec. Changing it puts an
+  ERROR on the December roster." Show `foreignDates` cells as read-only, with a link to the owning month.
+- The grid's coverage strip must use the same overlaid draft as the validator. Assert this in one test or check
+  it in the P4 screenshots.
+
+Push `main` and confirm CI is green, including the new Postgres steps, which have never run. Then begin P4.
