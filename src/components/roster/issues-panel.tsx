@@ -16,10 +16,18 @@ import { dayLabel, groupBySeverity, issueTarget } from "@/lib/roster-view";
 import { cn } from "@/lib/utils";
 import { SeverityBadge } from "./status-style";
 
-/** The explanation starts with the issue message; show only what it adds. */
-function extra(explanation: string | undefined, message: string): string {
+/** The explanation starts with the issue message and ends with "Options: ..."; show only the new rationale when structured suggestions are rendered below. */
+function extra(
+  explanation: string | undefined,
+  message: string,
+  hasStructuredSuggestions: boolean,
+): string {
   if (!explanation) return "";
-  const rest = explanation.startsWith(message) ? explanation.slice(message.length) : explanation;
+  let rest = explanation.startsWith(message) ? explanation.slice(message.length) : explanation;
+  if (hasStructuredSuggestions) {
+    const idx = rest.indexOf(" Options: ");
+    if (idx !== -1) rest = rest.slice(0, idx);
+  }
   return rest.trim();
 }
 
@@ -116,9 +124,12 @@ export function IssuesPanel({
   const groups = groupBySeverity(issues);
 
   return (
-    <section aria-label="Issues" className="space-y-3">
+    <section aria-label="Issues" className="space-y-4">
       {!editable && readOnlyReason && (
-        <p className="rounded-md border bg-muted/50 p-2.5 text-xs" role="note">
+        <p
+          className="rounded-md border border-border bg-[#F8F8F5] p-2.5 text-xs text-foreground"
+          role="note"
+        >
           {readOnlyReason}
         </p>
       )}
@@ -128,17 +139,17 @@ export function IssuesPanel({
           <div key={severity}>
             <button
               type="button"
-              className="flex w-full items-center gap-1.5 border-b pb-1 text-left"
+              className="flex w-full items-center gap-2 border-b border-border pb-1.5 text-left"
               onClick={() => setOpen((o) => ({ ...o, [severity]: !o[severity] }))}
               aria-expanded={open[severity]}
             >
               {open[severity] ? (
-                <ChevronDown className="size-4" />
+                <ChevronDown className="size-3.5 text-muted-foreground" />
               ) : (
-                <ChevronRight className="size-4" />
+                <ChevronRight className="size-3.5 text-muted-foreground" />
               )}
               <SeverityBadge severity={severity} />
-              <span className="text-sm font-medium">{list.length}</span>
+              <span className="font-mono text-xs font-semibold tabular-nums">{list.length}</span>
               {severity === "ERROR" && (
                 <span className="text-xs text-muted-foreground">
                   block publishing until fixed or acknowledged
@@ -146,31 +157,46 @@ export function IssuesPanel({
               )}
             </button>
             {open[severity] && (
-              <ul className="divide-y">
+              <ul className="divide-y divide-border">
                 {list.map((issue) => {
                   const isOpen =
                     expanded.has(issue.id) || (severity === "ERROR" && list.length <= 6);
                   const target = issueTarget(issue);
                   const err = errors[issue.id];
+                  const actionableSuggestions = issue.suggestions.filter(
+                    (s) => s.type !== "ACCEPT_GAP",
+                  );
+                  const rationale = extra(
+                    explanations[issue.id],
+                    issue.message,
+                    actionableSuggestions.length > 0,
+                  );
+
                   return (
                     <li key={issue.id} className="space-y-2 py-2.5" data-issue={issue.id}>
                       <div className="flex items-start gap-2">
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                            <code className="font-mono text-[11px]">{issue.code}</code>
-                            {issue.date && <span>{dayLabel(issue.date)}</span>}
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                            <code className="font-mono text-[10.5px] text-foreground/80">
+                              {issue.code}
+                            </code>
+                            {issue.date && (
+                              <span className="font-mono tabular-nums">{dayLabel(issue.date)}</span>
+                            )}
                             {issue.acknowledgement && (
-                              <span className="rounded bg-emerald-100 px-1.5 py-0.5 font-medium text-emerald-900">
+                              <span className="rounded-[3px] border border-[#BBF7D0] bg-[#E6F4EA] px-1.5 py-0.5 text-[10px] font-medium text-[#14532D]">
                                 Acknowledged
                               </span>
                             )}
                             {issue.changedSince && (
-                              <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-900">
-                                Acknowledged earlier, changed since
+                              <span className="rounded-[3px] border border-[#FDE68A] bg-[#FDF3D7] px-1.5 py-0.5 text-[10px] font-medium text-[#854D0E]">
+                                Changed since ack
                               </span>
                             )}
                           </div>
-                          <p className="text-sm leading-snug">{issue.message}</p>
+                          <p className="mt-0.5 text-[13px] leading-snug text-foreground">
+                            {issue.message}
+                          </p>
                         </div>
                         <div className="flex shrink-0 items-center">
                           {target && (
@@ -206,13 +232,13 @@ export function IssuesPanel({
 
                       {isOpen && severity !== "INFO" && (
                         <div className="space-y-2 pl-0.5">
-                          {extra(explanations[issue.id], issue.message) && (
+                          {rationale && (
                             <p className="text-xs leading-relaxed text-muted-foreground">
-                              {extra(explanations[issue.id], issue.message)}
+                              {rationale}
                             </p>
                           )}
                           {issue.changedSince && (
-                            <p className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950">
+                            <p className="rounded-[4px] border border-[#FDE68A] bg-[#FFFBEB] p-2 text-xs text-[#854D0E]">
                               You acknowledged this when it read: &ldquo;
                               {issue.changedSince.previousMessage}&rdquo; ({issue.changedSince.note}
                               ). It reads differently now, so it blocks publishing again.
@@ -225,7 +251,7 @@ export function IssuesPanel({
                               {editable && (
                                 <button
                                   type="button"
-                                  className="underline"
+                                  className="font-medium text-primary underline"
                                   disabled={busy === `ack:${issue.id}`}
                                   onClick={() => withdraw(issue)}
                                 >
@@ -235,14 +261,17 @@ export function IssuesPanel({
                             </p>
                           )}
 
-                          {issue.suggestions.filter((s) => s.type !== "ACCEPT_GAP").length > 0 && (
+                          {actionableSuggestions.length > 0 && (
                             <ul className="space-y-1.5">
                               {issue.suggestions.map((s, i) =>
                                 s.type === "ACCEPT_GAP" ? null : (
-                                  <li key={i} className="rounded-md border p-2">
+                                  <li
+                                    key={i}
+                                    className="rounded-md border border-border bg-[#F8F8F5] px-2.5 py-2"
+                                  >
                                     <div className="flex items-start gap-2">
-                                      <div className="min-w-0 flex-1 text-xs leading-snug">
-                                        <span className="mr-1.5 rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold uppercase">
+                                      <div className="min-w-0 flex-1 text-xs leading-snug text-foreground">
+                                        <span className="mr-1.5 inline-block rounded-[3px] border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-foreground">
                                           {SUGGESTION_LABEL[s.type]}
                                         </span>
                                         {s.description}
@@ -267,7 +296,7 @@ export function IssuesPanel({
                                       )}
                                     </div>
                                     {confirming === `${issue.id}:${i}` && (
-                                      <div className="mt-2 space-y-2 rounded bg-amber-50 p-2 text-xs text-amber-950">
+                                      <div className="mt-2 space-y-2 rounded-[4px] border border-[#FDE68A] bg-[#FFFBEB] p-2 text-xs text-[#854D0E]">
                                         <p>
                                           This needs a manager-approved temporary assignment:{" "}
                                           {s
@@ -337,7 +366,7 @@ export function IssuesPanel({
                             <p
                               role="alert"
                               className={cn(
-                                "rounded border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive",
+                                "rounded-[4px] border border-[#FECACA] bg-[#FEF2F2] p-2 text-xs text-[#991B1B]",
                               )}
                             >
                               {err}

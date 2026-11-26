@@ -4,31 +4,31 @@ import { cn } from "@/lib/utils";
 
 /** Colour per status. Every cell also carries a letter code, so colour is never the only signal. */
 export const STATUS_CLASS: Record<EntryStatus, string> = {
-  WORK: "bg-slate-100 text-slate-700",
-  WEEKLY_OFF: "bg-sky-200 text-sky-950",
-  LEAVE: "bg-amber-200 text-amber-950",
-  COMP_OFF: "bg-violet-200 text-violet-950",
-  HOLIDAY: "bg-emerald-200 text-emerald-950",
-  UNAVAILABLE: "bg-rose-200 text-rose-950",
+  WORK: "bg-white text-[#9A9CA3]",
+  WEEKLY_OFF: "bg-[#E8F2FA] text-[#0C4A6E]",
+  LEAVE: "bg-[#FDF3D7] text-[#854D0E]",
+  COMP_OFF: "bg-[#F1ECFA] text-[#5B21B6]",
+  HOLIDAY: "bg-[#E6F4EA] text-[#14532D]",
+  UNAVAILABLE: "bg-[#FCE8E8] text-[#991B1B]",
 };
 
 export const SEVERITY_CLASS: Record<Severity, string> = {
-  ERROR: "bg-red-100 text-red-900 border-red-300",
-  WARNING: "bg-amber-100 text-amber-900 border-amber-300",
-  INFO: "bg-sky-100 text-sky-900 border-sky-300",
+  ERROR: "bg-[#FEF2F2] text-[#991B1B] border-[#FECACA]",
+  WARNING: "bg-[#FFFBEB] text-[#92400E] border-[#FDE68A]",
+  INFO: "bg-[#F0F9FF] text-[#075985] border-[#BAE6FD]",
 };
 
 export const SEVERITY_DOT: Record<Severity, string> = {
-  ERROR: "bg-red-600",
-  WARNING: "bg-amber-500",
-  INFO: "bg-sky-500",
+  ERROR: "bg-[#B91C1C]",
+  WARNING: "bg-[#D97706]",
+  INFO: "bg-[#0284C7]",
 };
 
 export function SeverityBadge({ severity, className }: { severity: Severity; className?: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        "inline-flex items-center rounded-[3px] border px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide",
         SEVERITY_CLASS[severity],
         className,
       )}
@@ -42,42 +42,42 @@ export function Legend() {
   const statuses = Object.keys(STATUS_CODE) as EntryStatus[];
   return (
     <ul
-      className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"
+      className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11px] text-muted-foreground"
       aria-label="Legend"
     >
       {statuses.map((s) => (
         <li key={s} className="flex items-center gap-1.5">
           <span
             className={cn(
-              "inline-flex size-5 items-center justify-center rounded text-[11px] font-semibold",
+              "inline-flex size-5 items-center justify-center rounded-[3px] border border-border/80 font-mono text-[10px] font-semibold",
               STATUS_CLASS[s],
             )}
           >
             {STATUS_CODE[s]}
           </span>
-          {STATUS_LABEL[s]}
+          <span>{STATUS_LABEL[s]}</span>
         </li>
       ))}
       <li className="flex items-center gap-1.5">
-        <span className="relative inline-flex size-5 items-center justify-center rounded bg-slate-100 text-[11px] font-semibold text-slate-700">
-          W<span className="absolute right-0 top-0 size-1.5 rounded-full bg-red-600" />
+        <span className="relative inline-flex size-5 items-center justify-center rounded-[3px] border border-border/80 bg-white font-mono text-[10px] font-semibold text-[#6E717A]">
+          W<span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-[#B91C1C]" />
         </span>
-        Issue on that day
+        <span>Issue</span>
       </li>
       <li className="flex items-center gap-1.5">
-        <span className="relative inline-flex size-5 items-center justify-center rounded bg-slate-100 text-[11px] font-semibold text-slate-700">
+        <span className="relative inline-flex size-5 items-center justify-center rounded-[3px] border border-border/80 bg-white font-mono text-[10px] font-semibold text-[#6E717A]">
           W
-          <span className="absolute bottom-0 left-0 text-[8px] font-bold leading-none text-amber-700">
+          <span className="absolute bottom-0 left-0.5 text-[7px] font-bold leading-none text-[#A16207]">
             p
           </span>
         </span>
-        Pending leave (not applied)
+        <span>Pending leave</span>
       </li>
       <li className="flex items-center gap-1.5">
-        <span className="relative inline-flex size-5 items-center justify-center rounded bg-slate-100 text-[11px] font-semibold text-slate-700">
-          W<span className="absolute bottom-0 right-0 size-1 rounded-full bg-slate-700" />
+        <span className="relative inline-flex size-5 items-center justify-center rounded-[3px] border border-border/80 bg-white font-mono text-[10px] font-semibold text-[#6E717A]">
+          W<span className="absolute bottom-0.5 right-0.5 size-1 rounded-full bg-[#18191B]" />
         </span>
-        Edited by hand
+        <span>Edited by hand</span>
       </li>
     </ul>
   );

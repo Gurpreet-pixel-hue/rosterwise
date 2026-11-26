@@ -3,11 +3,21 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, GitCompare, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  GitCompare,
+  PanelRightClose,
+  PanelRightOpen,
+  Search,
+  X,
+} from "lucide-react";
 import { generateRosterAction, publishRosterAction } from "@/server/actions/roster";
 import type { RosterPageData } from "@/server/pageData";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ACTOR } from "@/lib/config";
@@ -40,6 +50,7 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
 
   const [kind, setKind] = useState<ViewKind>("company");
   const [filter, setFilter] = useState<string>("");
+  const [search, setSearch] = useState<string>("");
   const [date, setDate] = useState<string>(data.monthDates[0]);
   const [bpSel, setBpSel] = useState<string | null>(null);
   const [side, setSide] = useState<"issues" | "day">("issues");
@@ -50,6 +61,7 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [pendingJump, setPendingJump] = useState<string | null>(null);
   const [onlyView, setOnlyView] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(true);
 
   const options = useMemo(() => filterOptions(kind, refs), [kind, refs]);
   const filterValue = options.some((o) => o.value === filter) ? filter : (options[0]?.value ?? "");
@@ -57,13 +69,19 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
     () => visibleEmployees(kind, filterValue, refs),
     [kind, filterValue, refs],
   );
+  const shownEmployees = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return employees;
+    return employees.filter((e) => e.name.toLowerCase().includes(q));
+  }, [employees, search]);
+
   const bps = useMemo(
     () => visibleBrandProcesses(kind, filterValue, refs),
     [kind, filterValue, refs],
   );
   const employeeIds = useMemo(() => new Set(employees.map((e) => e.id)), [employees]);
-
   const bpIds = useMemo(() => new Set(bps.map((b) => b.id)), [bps]);
+
   const scoped = onlyView && kind !== "company";
   const shownIssues = useMemo(
     () => (scoped && view ? issuesInView(view.issues, employeeIds, bpIds) : (view?.issues ?? [])),
@@ -95,7 +113,7 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
     setPendingJump(null);
     const t = setTimeout(() => setHighlight(null), 3500);
     return () => clearTimeout(t);
-  }, [pendingJump, kind, filterValue]);
+  }, [pendingJump, kind, filterValue, search]);
 
   function say(text: string, tone: "ok" | "error" = "ok") {
     setNotice({ text, tone });
@@ -114,6 +132,7 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
         setKind("company");
         setFilter("");
       }
+      setSearch("");
       const key = cellKey(t.employeeId, t.date);
       setHighlight({ key });
       setPendingJump(key);
@@ -170,102 +189,174 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
       : `${VIEW_LABEL[kind]}: ${options.find((o) => o.value === filterValue)?.label ?? ""}`;
 
   return (
-    <div className="mx-auto max-w-[1800px] space-y-3 px-4 py-4">
-      {/* header */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1">
-          <Link
-            href={`/roster/${shiftMonth(month, -1)}`}
-            aria-label="Previous month"
-            className="inline-flex size-8 items-center justify-center rounded-lg border hover:bg-accent"
-          >
-            <ChevronLeft className="size-4" />
-          </Link>
-          <h1 className="min-w-44 text-center text-lg font-semibold tracking-tight">
-            {monthTitle(month)}
-          </h1>
-          <Link
-            href={`/roster/${shiftMonth(month, 1)}`}
-            aria-label="Next month"
-            className="inline-flex size-8 items-center justify-center rounded-lg border hover:bg-accent"
-          >
-            <ChevronRight className="size-4" />
-          </Link>
-        </div>
-        {view ? (
-          <div className="flex items-center gap-2">
-            <Badge
-              variant={view.roster.status === "PUBLISHED" ? "default" : "secondary"}
-              data-testid="status-badge"
+    <div className="mx-auto flex w-full max-w-[2360px] flex-col gap-2 px-3 py-2 lg:h-[calc(100dvh-45px)] lg:overflow-hidden lg:px-5 lg:py-2.5">
+      {/* Compact two-row command bar */}
+      <div className="shrink-0 border-b border-border pb-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <div className="flex items-center gap-1">
+            <Link
+              href={`/roster/${shiftMonth(month, -1)}`}
+              aria-label="Previous month"
+              className="inline-flex size-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              {view.roster.status}
-            </Badge>
-            <span className="text-sm text-muted-foreground" data-testid="version-label">
-              version {view.roster.version} of {data.versions.length}
-            </span>
-            <span className="text-sm">
-              <strong className={errors > 0 ? "text-red-700" : ""}>{errors}</strong> errors,{" "}
-              <strong>{warnings}</strong> warnings
-              {manualCount > 0 && (
-                <span className="text-muted-foreground">, {manualCount} edited by hand</span>
-              )}
-            </span>
+              <ChevronLeft className="size-4" />
+            </Link>
+            <h1 className="min-w-36 text-center text-base font-semibold tracking-tight text-foreground">
+              {monthTitle(month)}
+            </h1>
+            <Link
+              href={`/roster/${shiftMonth(month, 1)}`}
+              aria-label="Next month"
+              className="inline-flex size-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <ChevronRight className="size-4" />
+            </Link>
           </div>
-        ) : (
-          <Badge variant="outline">Not generated</Badge>
-        )}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Link
-            href={`/roster/${month}/changes`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-sm hover:bg-accent"
-          >
-            <GitCompare className="size-4" /> What if...
-          </Link>
-          {view && !confirmRegen && (
-            <Button
-              variant="outline"
-              disabled={busy !== null}
-              onClick={() => setConfirmRegen(true)}
-            >
-              Regenerate
-            </Button>
+          {view ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge
+                variant={view.roster.status === "PUBLISHED" ? "default" : "secondary"}
+                data-testid="status-badge"
+              >
+                {view.roster.status}
+              </Badge>
+              <span
+                className="font-mono text-xs tabular-nums text-muted-foreground"
+                data-testid="version-label"
+              >
+                version {view.roster.version} of {data.versions.length}
+              </span>
+              <span className="text-xs text-muted-foreground">|</span>
+              <span className="text-[13px]">
+                <strong
+                  className={cn(
+                    "font-mono tabular-nums",
+                    errors > 0 ? "text-[#B91C1C]" : "text-foreground",
+                  )}
+                >
+                  {errors}
+                </strong>{" "}
+                errors,{" "}
+                <strong className="font-mono tabular-nums text-foreground">{warnings}</strong>{" "}
+                warnings
+                {manualCount > 0 && (
+                  <span className="text-muted-foreground">
+                    , <span className="font-mono tabular-nums">{manualCount}</span> edited by hand
+                  </span>
+                )}
+              </span>
+            </div>
+          ) : (
+            <Badge variant="outline">Not generated</Badge>
           )}
-          {view && confirmRegen && (
-            <span className="flex items-center gap-1.5 rounded-lg border bg-muted/50 p-1 pl-2.5 text-sm">
-              New version {view.roster.version + 1}; your {manualCount} manual edit(s) are kept.
-              <Button size="sm" onClick={generate} disabled={busy !== null}>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Link
+              href={`/roster/${month}/changes`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              <GitCompare className="size-3.5 text-muted-foreground" /> What if...
+            </Link>
+            {view && !confirmRegen && (
+              <Button
+                variant="outline"
+                disabled={busy !== null}
+                onClick={() => setConfirmRegen(true)}
+              >
                 Regenerate
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setConfirmRegen(false)}>
-                Cancel
+            )}
+            {view && confirmRegen && (
+              <span className="flex items-center gap-1.5 rounded-md border border-border bg-muted/70 p-1 pl-2.5 text-xs">
+                New version {view.roster.version + 1}; keeps {manualCount} manual edit(s).
+                <Button size="xs" onClick={generate} disabled={busy !== null}>
+                  Regenerate
+                </Button>
+                <Button size="xs" variant="ghost" onClick={() => setConfirmRegen(false)}>
+                  Cancel
+                </Button>
+              </span>
+            )}
+            {view && (
+              <Button
+                onClick={publish}
+                disabled={!editable || blockers > 0 || busy !== null}
+                title={
+                  !editable
+                    ? (readOnlyReason ?? "")
+                    : blockers > 0
+                      ? `${blockers} error(s) must be fixed or acknowledged first`
+                      : "Publish this version"
+                }
+              >
+                {busy === "publish"
+                  ? "Publishing..."
+                  : view.roster.status === "PUBLISHED"
+                    ? "Published"
+                    : "Publish"}
               </Button>
-            </span>
-          )}
-          {view && (
-            <Button
-              onClick={publish}
-              disabled={!editable || blockers > 0 || busy !== null}
-              title={
-                !editable
-                  ? (readOnlyReason ?? "")
-                  : blockers > 0
-                    ? `${blockers} error(s) must be fixed or acknowledged first`
-                    : "Publish this version"
-              }
-            >
-              {busy === "publish"
-                ? "Publishing..."
-                : view.roster.status === "PUBLISHED"
-                  ? "Published"
-                  : "Publish"}
-            </Button>
-          )}
+            )}
+          </div>
         </div>
+
+        {view && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+            <Tabs value={kind} onValueChange={(v) => setKind(v as ViewKind)}>
+              <TabsList variant="line" aria-label="Roster views">
+                {VIEW_KINDS.map((k) => (
+                  <TabsTrigger key={k} value={k}>
+                    {VIEW_LABEL[k]}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+            {options.length > 0 && (
+              <NativeSelect
+                aria-label={`Choose ${VIEW_LABEL[kind].toLowerCase()}`}
+                className="h-7 w-44 text-xs xl:w-56"
+                value={filterValue}
+                onChange={(e) => setFilter(e.target.value)}
+              >
+                {options.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            )}
+            {kind !== "employee" && (
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Filter people by name"
+                  placeholder="Filter person..."
+                  className="h-7 w-36 pl-7 text-xs xl:w-44"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                {shownEmployees.length} people · {bps.length} brand rules
+              </span>
+              <Button
+                size="icon-sm"
+                variant="outline"
+                aria-label={panelOpen ? "Hide side panel" : "Show side panel"}
+                title={panelOpen ? "Hide side panel" : "Show side panel"}
+                onClick={() => setPanelOpen((o) => !o)}
+              >
+                {panelOpen ? <PanelRightClose /> : <PanelRightOpen />}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {view && editable && blockers > 0 && (
-        <p className="text-sm text-muted-foreground" data-testid="publish-hint">
-          Publishing is blocked by <strong className="text-red-700">{blockers}</strong> error(s).
+        <p className="shrink-0 text-xs text-muted-foreground" data-testid="publish-hint">
+          Publishing is blocked by{" "}
+          <strong className="font-mono tabular-nums text-[#B91C1C]">{blockers}</strong> error(s).
           Fix each one, or acknowledge it with a note in the Issues panel.
         </p>
       )}
@@ -273,22 +364,27 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
         <div
           role={notice.tone === "error" ? "alert" : "status"}
           className={cn(
-            "flex items-start gap-2 rounded-md border p-2.5 text-sm",
+            "shrink-0 flex items-start gap-2 rounded-md border px-3 py-1.5 text-xs",
             notice.tone === "error"
-              ? "border-destructive/40 bg-destructive/10 text-destructive"
-              : "border-emerald-300 bg-emerald-50 text-emerald-950",
+              ? "border-[#FECACA] bg-[#FEF2F2] text-[#991B1B]"
+              : "border-[#BBF7D0] bg-[#E6F4EA] text-[#14532D]",
           )}
         >
           <span className="flex-1">{notice.text}</span>
-          <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}>
-            <X className="size-4" />
+          <button
+            type="button"
+            aria-label="Dismiss"
+            className="opacity-70 hover:opacity-100"
+            onClick={() => setNotice(null)}
+          >
+            <X className="size-3.5" />
           </button>
         </div>
       )}
 
       {!view && (
-        <div className="rounded-lg border border-dashed p-10 text-center">
-          <h2 className="font-medium">No roster for {monthTitle(month)} yet</h2>
+        <div className="rounded-md border border-dashed border-border bg-card p-10 text-center">
+          <h2 className="font-medium text-foreground">No roster for {monthTitle(month)} yet</h2>
           <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
             The engine builds it from each brand&apos;s operating calendar and every employee&apos;s
             availability. Any constraint it cannot meet becomes an issue you can see, never a silent
@@ -302,42 +398,17 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
 
       {view && (
         <>
-          {/* views */}
-          <div className="flex flex-wrap items-center gap-3">
-            <Tabs value={kind} onValueChange={(v) => setKind(v as ViewKind)}>
-              <TabsList aria-label="Roster views">
-                {VIEW_KINDS.map((k) => (
-                  <TabsTrigger key={k} value={k}>
-                    {VIEW_LABEL[k]}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-            {options.length > 0 && (
-              <NativeSelect
-                aria-label={`Choose ${VIEW_LABEL[kind].toLowerCase()}`}
-                className="w-60"
-                value={filterValue}
-                onChange={(e) => setFilter(e.target.value)}
-              >
-                {options.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </NativeSelect>
+          <div
+            className={cn(
+              "grid min-h-0 flex-1 overflow-hidden rounded-md border border-border bg-card",
+              panelOpen ? "lg:grid-cols-[minmax(0,1fr)_clamp(285px,23vw,410px)]" : "grid-cols-1",
             )}
-            <span className="text-xs text-muted-foreground">
-              {employees.length} people, {bps.length} brand rules
-            </span>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
-            <div className="min-w-0 space-y-2">
+          >
+            <div className="flex min-h-0 min-w-0 flex-col">
               <RosterGrid
                 month={month}
                 window={data.window}
-                employees={employees}
+                employees={shownEmployees}
                 entries={entries}
                 issuesByCell={byCell}
                 refs={refs}
@@ -355,90 +426,102 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
                 onDate={(d) => {
                   setDate(d);
                   setSide("day");
+                  setPanelOpen(true);
                 }}
                 onStrip={(bpId, d) => {
                   setDate(d);
                   setBpSel(bpId);
                   setSide("day");
+                  setPanelOpen(true);
                 }}
               />
-              <Legend />
-              <p className="text-xs text-muted-foreground">
-                Dates outside {monthTitle(month)} are the boundary week and belong to the
-                neighbouring roster; they show here read-only (dashed). The coverage rows count only{" "}
-                {monthTitle(month)}.
-              </p>
+              <div className="shrink-0 space-y-1 border-t border-border bg-[#F8F8F5] px-3 py-1.5">
+                <Legend />
+                <p className="text-[11px] text-muted-foreground">
+                  Dates outside {monthTitle(month)} are the boundary week and belong to the
+                  neighbouring roster; they show here read-only (dashed). Coverage rows count only{" "}
+                  {monthTitle(month)}.
+                </p>
+              </div>
             </div>
 
-            <aside className="min-w-0 rounded-lg border p-3 xl:max-h-[calc(100vh-11rem)] xl:overflow-y-auto">
-              <div
-                className="mb-3 flex gap-1 rounded-lg bg-muted p-0.5"
-                role="tablist"
-                aria-label="Side panel"
-              >
-                {(
-                  [
+            {panelOpen && (
+              <aside className="flex min-h-0 min-w-0 flex-col border-t border-border bg-card lg:border-l lg:border-t-0">
+                <div
+                  className="flex shrink-0 border-b border-border px-3 pt-1"
+                  role="tablist"
+                  aria-label="Side panel"
+                >
+                  {(
                     [
-                      "issues",
-                      `Issues (${shownIssues.filter((i) => i.severity !== "INFO").length})`,
-                    ],
-                    ["day", "Who's working"],
-                  ] as const
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    role="tab"
-                    aria-selected={side === id}
-                    onClick={() => setSide(id)}
-                    className={cn(
-                      "flex-1 rounded-md px-3 py-1 text-sm font-medium",
-                      side === id ? "bg-background shadow-sm" : "text-muted-foreground",
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {side === "issues" && kind !== "company" && (
-                <label className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={onlyView}
-                    onChange={(e) => setOnlyView(e.target.checked)}
-                  />
-                  Only issues in this view ({shownIssues.length} of {view.issues.length})
-                </label>
-              )}
-              {side === "issues" ? (
-                <IssuesPanel
-                  issues={shownIssues}
-                  emptyText={
-                    scoped
-                      ? `No issues in this view (${view.issues.length - shownIssues.length} elsewhere in the roster).`
-                      : "No issues. This roster is valid."
-                  }
-                  explanations={view.explanations}
-                  rosterId={view.roster.id}
-                  editable={editable}
-                  readOnlyReason={readOnlyReason}
-                  onJump={jump}
-                  onDone={refresh}
-                />
-              ) : (
-                <WhoWorking
-                  date={date}
-                  window={data.window}
-                  entries={view.entries}
-                  refs={refs}
-                  employeeIds={employeeIds}
-                  coverage={view.coverage}
-                  selectedBp={bpSel}
-                  scopeLabel={scopeLabel}
-                  onDate={setDate}
-                />
-              )}
-            </aside>
+                      [
+                        "issues",
+                        `Issues (${shownIssues.filter((i) => i.severity !== "INFO").length})`,
+                      ],
+                      ["day", "Who's working"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={side === id}
+                      onClick={() => setSide(id)}
+                      className={cn(
+                        "-mb-px border-b-2 px-3 py-2 text-xs font-medium transition-colors",
+                        side === id
+                          ? "border-primary text-foreground"
+                          : "border-transparent text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                  {side === "issues" && kind !== "company" && (
+                    <label className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+                      <Checkbox
+                        checked={onlyView}
+                        onCheckedChange={(c) => setOnlyView(Boolean(c))}
+                      />
+                      <span>
+                        Only issues in this view ({shownIssues.length} of {view.issues.length})
+                      </span>
+                    </label>
+                  )}
+                  {side === "issues" ? (
+                    <IssuesPanel
+                      issues={shownIssues}
+                      emptyText={
+                        scoped
+                          ? `No issues in this view (${view.issues.length - shownIssues.length} elsewhere in the roster).`
+                          : "No issues. This roster is valid."
+                      }
+                      explanations={view.explanations}
+                      rosterId={view.roster.id}
+                      editable={editable}
+                      readOnlyReason={readOnlyReason}
+                      onJump={jump}
+                      onDone={refresh}
+                    />
+                  ) : (
+                    <WhoWorking
+                      date={date}
+                      window={data.window}
+                      entries={view.entries}
+                      refs={refs}
+                      employeeIds={employeeIds}
+                      coverage={view.coverage}
+                      selectedBp={bpSel}
+                      scopeLabel={scopeLabel}
+                      onDate={setDate}
+                    />
+                  )}
+                </div>
+              </aside>
+            )}
           </div>
 
           <CellDialog

@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 import { AppNav } from "@/components/app-nav";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const plexSans = IBM_Plex_Sans({
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-plex-sans",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const plexMono = IBM_Plex_Mono({
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-mono",
   subsets: ["latin"],
 });
 
@@ -24,8 +26,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="antialiased">
+    <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
+      <body className="min-h-screen bg-background text-foreground antialiased">
         <AppNav />
         {children}
       </body>

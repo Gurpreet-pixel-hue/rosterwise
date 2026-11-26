@@ -15,7 +15,7 @@ export default async function SetupHome() {
   return (
     <section className="space-y-4">
       <div className="space-y-1">
-        <h1 className="text-xl font-semibold tracking-tight">Setup</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">Setup</h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
           Everything the scheduling engine uses is data you can change here: who works where, what
           each brand needs and when it operates, holidays, and leave. Nothing is hard-coded. A
@@ -23,20 +23,31 @@ export default async function SetupHome() {
           rewritten under you.
         </p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {RESOURCE_DEFS.map((d) => (
-          <Link
-            key={d.slug}
-            href={`/setup/${d.slug}`}
-            className="rounded-lg border p-4 transition-colors hover:bg-accent"
-          >
-            <div className="flex items-baseline justify-between">
-              <h2 className="font-medium">{d.title}</h2>
-              <span className="text-sm tabular-nums text-muted-foreground">{n.get(d.slug)}</span>
-            </div>
-            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{d.description}</p>
-          </Link>
-        ))}
+      <div className="overflow-x-auto rounded-md border border-border bg-card">
+        <table className="w-full text-sm">
+          <thead className="border-b border-border bg-[#F4F3EE] text-left text-xs text-muted-foreground">
+            <tr>
+              <th className="px-4 py-2.5 font-medium">Resource</th>
+              <th className="px-4 py-2.5 font-medium">Purpose</th>
+              <th className="px-4 py-2.5 text-right font-medium">Records</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {RESOURCE_DEFS.map((d) => (
+              <tr key={d.slug} className="transition-colors hover:bg-muted/40">
+                <td className="whitespace-nowrap px-4 py-3 font-medium text-foreground">
+                  <Link href={`/setup/${d.slug}`} className="text-primary hover:underline">
+                    {d.title}
+                  </Link>
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">{d.description}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-right font-mono tabular-nums text-foreground">
+                  {n.get(d.slug)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   );

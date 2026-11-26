@@ -270,7 +270,7 @@ export function ResourceManager({
         </Button>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Input
           aria-label={`Search ${def.title}`}
           placeholder={`Search ${def.title.toLowerCase()}...`}
@@ -278,7 +278,7 @@ export function ResourceManager({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <span className="text-sm text-muted-foreground">
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {shown.length === rows.length
             ? `${rows.length} rows`
             : `${shown.length} of ${rows.length}`}
@@ -290,12 +290,17 @@ export function ResourceManager({
         )}
       </div>
 
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
+      <div className="overflow-hidden rounded-md border border-border bg-card">
+        <Table
+          containerClassName="max-h-[calc(100dvh-14.5rem)] overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          containerProps={{ tabIndex: 0, role: "region", "aria-label": def.title }}
+        >
+          <TableHeader className="sticky top-0 z-10 bg-[#F4F3EE]">
+            <TableRow className="hover:bg-transparent">
               {def.columns.map((c) => (
-                <TableHead key={c.label}>{c.label}</TableHead>
+                <TableHead key={c.label} className="text-xs font-medium text-muted-foreground">
+                  {c.label}
+                </TableHead>
               ))}
               <TableHead className="w-28 text-right">
                 <span className="sr-only">Actions</span>
@@ -315,9 +320,28 @@ export function ResourceManager({
             )}
             {shown.map((r) => (
               <TableRow key={r.id}>
-                {def.columns.map((c) => (
-                  <TableCell key={c.label}>{c.value(r, lookups)}</TableCell>
-                ))}
+                {def.columns.map((c) => {
+                  const val = c.value(r, lookups);
+                  const monoCol = [
+                    "Shift",
+                    "Date",
+                    "From",
+                    "To",
+                    "Earned on",
+                    "Used on",
+                    "Allocation",
+                    "Minimum staff",
+                    "Max in a row",
+                  ].includes(c.label);
+                  return (
+                    <TableCell
+                      key={c.label}
+                      className={monoCol ? "font-mono text-xs tabular-nums" : undefined}
+                    >
+                      {val}
+                    </TableCell>
+                  );
+                })}
                 <TableCell className="text-right">
                   {confirmDelete === r.id ? (
                     <span className="inline-flex items-center gap-1">

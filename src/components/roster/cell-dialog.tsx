@@ -216,22 +216,22 @@ export function CellDialog({
         </DialogHeader>
 
         {foreignMonth && target && (
-          <p className="rounded-md border border-slate-300 bg-slate-50 p-2.5 text-sm" role="note">
+          <p className="rounded-md border border-border bg-[#F8F8F5] p-2.5 text-sm" role="note">
             This day belongs to the {monthTitle(foreignMonth)} roster, so it is read-only here.{" "}
-            <Link className="font-medium underline" href={`/roster/${foreignMonth}`}>
+            <Link className="font-medium text-primary underline" href={`/roster/${foreignMonth}`}>
               Open the {monthTitle(foreignMonth)} roster
             </Link>{" "}
             to change it; it then shows here too.
           </p>
         )}
         {!foreignMonth && !editable && readOnlyReason && (
-          <p className="rounded-md border border-slate-300 bg-slate-50 p-2.5 text-sm" role="note">
+          <p className="rounded-md border border-border bg-[#F8F8F5] p-2.5 text-sm" role="note">
             {readOnlyReason}
           </p>
         )}
         {canEdit && staticWarning && (
           <p
-            className="rounded-md border border-amber-400 bg-amber-50 p-2.5 text-sm text-amber-950"
+            className="rounded-md border border-[#FDE68A] bg-[#FFFBEB] p-2.5 text-sm text-[#854D0E]"
             role="alert"
           >
             {staticWarning.text}
@@ -295,7 +295,10 @@ export function CellDialog({
           )}
 
           {changed && canEdit && (
-            <div className="space-y-2 rounded-md border p-3" aria-live="polite">
+            <div
+              className="space-y-2 rounded-md border border-border bg-[#F8F8F5] p-3"
+              aria-live="polite"
+            >
               <h4 className="text-sm font-semibold">Before you save</h4>
               {previewing && !preview && (
                 <p className="text-xs text-muted-foreground">Checking...</p>
@@ -303,9 +306,12 @@ export function CellDialog({
               {preview && (
                 <>
                   <p className="text-sm">
-                    Errors on this roster: <strong>{preview.errorsBefore}</strong> to{" "}
+                    Errors on this roster:{" "}
+                    <strong className="font-mono tabular-nums">{preview.errorsBefore}</strong> to{" "}
                     <strong
-                      className={preview.errorsAfter > preview.errorsBefore ? "text-red-700" : ""}
+                      className={`font-mono tabular-nums ${
+                        preview.errorsAfter > preview.errorsBefore ? "text-[#B91C1C]" : ""
+                      }`}
                     >
                       {preview.errorsAfter}
                     </strong>
@@ -316,7 +322,7 @@ export function CellDialog({
                   </p>
                   {preview.delta.added.length > 0 && (
                     <div className="space-y-1">
-                      <div className="text-xs font-medium text-red-800">
+                      <div className="text-xs font-medium text-[#991B1B]">
                         Adds {preview.delta.added.length}
                       </div>
                       <List items={preview.delta.added} />
@@ -324,7 +330,7 @@ export function CellDialog({
                   )}
                   {preview.delta.resolved.length > 0 && (
                     <div className="space-y-1">
-                      <div className="text-xs font-medium text-emerald-800">
+                      <div className="text-xs font-medium text-[#14532D]">
                         Resolves {preview.delta.resolved.length}
                       </div>
                       <List items={preview.delta.resolved} limit={3} />
@@ -332,7 +338,7 @@ export function CellDialog({
                   )}
                   {neighbour && (
                     <div
-                      className="space-y-1 rounded border border-amber-400 bg-amber-50 p-2 text-amber-950"
+                      className="space-y-1 rounded-[4px] border border-[#FDE68A] bg-[#FFFBEB] p-2 text-[#854D0E]"
                       role="alert"
                     >
                       <div className="text-xs font-semibold">
@@ -355,7 +361,7 @@ export function CellDialog({
           {error && (
             <p
               role="alert"
-              className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-sm text-destructive"
+              className="rounded-md border border-[#FECACA] bg-[#FEF2F2] p-2.5 text-sm text-[#991B1B]"
             >
               {error}
             </p>

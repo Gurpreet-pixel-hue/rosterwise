@@ -208,16 +208,17 @@ export function ChangesWorkbench({ data, today }: { data: RosterPageData; today:
   }
 
   return (
-    <div className="mx-auto max-w-[1200px] space-y-5 px-4 py-4">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="mx-auto max-w-[1520px] space-y-5 px-4 py-4 lg:px-6 lg:py-5">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border pb-3">
         <Link
           href={`/roster/${month}`}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="size-4" /> {monthTitle(month)} roster
         </Link>
-        <h1 className="text-lg font-semibold tracking-tight">What if...</h1>
-        <span className="text-sm text-muted-foreground" data-testid="base-version">
+        <span className="text-border">/</span>
+        <h1 className="text-lg font-semibold tracking-tight text-foreground">What if...</h1>
+        <span className="font-mono text-xs text-muted-foreground" data-testid="base-version">
           Based on version {view.roster.version} ({view.roster.status.toLowerCase()})
         </span>
       </div>
@@ -227,9 +228,9 @@ export function ChangesWorkbench({ data, today }: { data: RosterPageData; today:
         edited by hand and re-plans only the weeks the change touches.
       </p>
 
-      <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="grid gap-6 lg:grid-cols-[clamp(300px,26vw,380px)_minmax(0,1fr)]">
         <form
-          className="space-y-4 rounded-lg border p-4"
+          className="space-y-4 self-start rounded-md border border-border bg-card p-4"
           onSubmit={(e) => {
             e.preventDefault();
             void run();
@@ -460,7 +461,7 @@ export function ChangesWorkbench({ data, today }: { data: RosterPageData; today:
           {error && (
             <p
               role="alert"
-              className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-sm text-destructive"
+              className="rounded-md border border-[#FECACA] bg-[#FEF2F2] p-2.5 text-sm text-[#991B1B]"
             >
               {error}
             </p>
@@ -469,7 +470,7 @@ export function ChangesWorkbench({ data, today }: { data: RosterPageData; today:
 
         <div className="min-w-0 space-y-6">
           {!preview && !applied && (
-            <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            <div className="rounded-md border border-dashed border-border bg-card p-10 text-center text-sm text-muted-foreground">
               Pick a change and press Preview to see exactly which cells and issues it would change.
             </div>
           )}
@@ -485,7 +486,7 @@ export function ChangesWorkbench({ data, today }: { data: RosterPageData; today:
             <div className="space-y-4">
               <p
                 role="status"
-                className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950"
+                className="rounded-md border border-[#BBF7D0] bg-[#E6F4EA] p-3 text-sm text-[#14532D]"
                 data-testid="applied-banner"
               >
                 Applied. {monthTitle(month)} is now{" "}
