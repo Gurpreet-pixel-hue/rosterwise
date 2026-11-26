@@ -323,7 +323,8 @@ Pages:
 6. Simple approval: pod lead "approve pod" checkbox before publish
 
 ### P6 — Deploy & docs (≈3h)
-- Deploy to Vercel + Neon, seed the production DB, smoke-test the public URL in an incognito window.
+- **Before deploying:** the shared-passcode write lock per the Owner ruling in `docs/reviews/REVIEW-P3.md` (server-side guard, signed cookie, DB-backed attempt limit, fail closed, security headers).
+- Deploy to Vercel + Neon, seed the production DB, smoke-test the public URL in an incognito window (locked: views work, writes refused; unlocked: writes work).
 - `README.md`: what it is, live URL, local setup, scripts, architecture diagram (text/mermaid), and
   **"How I think" with all 8 questions from PDF section 8 answered individually and honestly**, including trade-offs and limits.
 - `docs/APPROACH.md`: short approach note (≤1 page) + the **2–3 sentence version** for the email.
@@ -341,7 +342,7 @@ Pages:
 
 ## 7. Final submission checklist (Reviewer signs off on this at the end)
 
-- [ ] Public app URL works without login, with realistic seed data (PDF §7.1)
+- [ ] Public app URL viewable without login, with realistic seed data (PDF §7.1). Writes need the shared passcode (Owner ruling, REVIEW-P3), given to evaluators in the submission email
 - [ ] GitHub repo public: source, README, setup steps, `.env.example` (§7.2)
 - [ ] Demo script ready (Owner records the 3–5 min video) (§7.3)
 - [ ] Approach note (§7.4)

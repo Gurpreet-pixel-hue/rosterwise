@@ -61,12 +61,27 @@ P2 had to rule on.
 
 ## Owner decision (security, raised by the Executor)
 
-The Executor is right that there is no auth, by requirement ("works without login"). **Ruling: option (b),
-a public read-only mode.** Mutating actions refuse unless `DEMO_WRITE=1` (or an equivalent env flag) is set.
-Do it in **P6, not now**, with one refusal test. The deployed demo then shows every view, issue and simulation
-preview (preview writes nothing, so it can stay enabled publicly), and the video is recorded on a local or
-preview deployment with writes on. Also add a `pnpm db:reset-demo` (re-seed) as the fallback (a).
-README Q&A must state this honestly.
+**Owner ruling: option (c), a shared passcode. The site must be secure.** Build it in **P6** (before deploy),
+not in this round. Spec:
+
+- **Viewing stays public** (the PDF requires a testable public URL). Every mutation needs an unlocked
+  session: master-data CRUD, generate, commit edit, apply, acknowledge, publish. Previews (edit preview,
+  simulate) write nothing, so they may stay public.
+- **The check is server-side, in the services or a single guard every action calls**, never only in the UI.
+  One test per mutating action: refused with `UNAUTHORIZED` and nothing written when locked.
+- `/unlock` takes the passcode **and a display name**. The audit `actor` comes from the session, not from the
+  client. This also closes the spoofable-actor gap the Executor flagged.
+- Passcode in env `DEMO_PASSCODE` (never committed, a placeholder in `.env.example`), compared with
+  `crypto.timingSafeEqual` on hashes. On success, set an **HMAC-signed** cookie (`SESSION_SECRET`):
+  `httpOnly`, `Secure` in production, `SameSite=Lax`, expiry 12 h. Add a "Lock" button that clears it.
+- **Brute-force limit that works on serverless:** failed attempts recorded in Postgres (a small
+  `UnlockAttempt` table keyed by IP hash), e.g. 5 per 15 min, then `429`. In-memory counters don't survive
+  Vercel instances.
+- If `DEMO_PASSCODE` is unset in production, **all writes are refused** (fail closed), not open.
+- Security headers in `next.config` (CSP, `X-Frame-Options: DENY`, `Referrer-Policy`, `X-Content-Type-Options`).
+- Keep `pnpm db:reset-demo` (re-seed) for recovery.
+- The passcode goes to the evaluators in the submission email only. README Q&A states the model honestly:
+  public read, shared-secret write, no per-user accounts.
 
 ## Verified
 
