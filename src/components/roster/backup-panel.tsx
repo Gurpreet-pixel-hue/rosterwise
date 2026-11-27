@@ -42,7 +42,7 @@ export function BackupPanel({
     setBusy(null);
     if (!res.ok) return setError(res.error.message);
     onDone(
-      `Added ${c.name} as a backup (${c.suggestedPct}%) for ${r.brandName} / ${r.processCode}. It applies to the next roster you generate or re-plan; saved rosters are not rewritten.`,
+      `Added ${c.name} as a backup (${c.suggestedPct}%) for ${r.brandName} / ${r.processCode}. Saved cells are not rewritten, but it applies to the next roster you generate or re-plan, and it is offered as a USE_BACKUP suggestion on this roster's gaps.`,
     );
   }
 

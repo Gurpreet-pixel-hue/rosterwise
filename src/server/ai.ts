@@ -2,9 +2,10 @@
 // call fails for any reason, the caller gets the engine's deterministic explanation (explain.ts), labelled as such.
 //
 // Privacy: the request contains ONLY the issue's own fields (its code, severity, date, message, the engine's
-// explanation and the descriptions of its suggestions). No roster, no other employees, no leave records, no
-// contact details. The model is told to use only those facts. The call goes out from the server; the key is never
-// sent to the browser.
+// explanation and the descriptions of its suggestions). That text does name people: the message names who the
+// issue is about, and a suggestion's description names the person it proposes (fictional in the demo). Nothing
+// else about anyone is sent: no roster, no leave records, no other employees, no ids, no contact details. The
+// model is told to use only those facts. The call goes out from the server; the key is never sent to the browser.
 import type { Issue } from "../engine/types";
 
 export const AI_MODEL = "claude-sonnet-5-5";
