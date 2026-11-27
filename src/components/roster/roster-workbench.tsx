@@ -23,7 +23,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ACTOR } from "@/lib/config";
 import {
   VIEW_KINDS,
   VIEW_LABEL,
@@ -172,7 +171,7 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
   async function generate() {
     setBusy("generate");
     setConfirmRegen(false);
-    const r = await generateRosterAction({ month, actor: ACTOR });
+    const r = await generateRosterAction({ month });
     setBusy(null);
     if (!r.ok) return say(r.error.message, "error");
     const errs = r.data.issues.filter((i) => i.severity === "ERROR").length;
@@ -188,7 +187,7 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
   async function publish() {
     if (!view) return;
     setBusy("publish");
-    const r = await publishRosterAction({ rosterId: view.roster.id, actor: ACTOR });
+    const r = await publishRosterAction({ rosterId: view.roster.id });
     setBusy(null);
     if (!r.ok) return say(r.error.message, "error");
     refresh(

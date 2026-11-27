@@ -5,7 +5,6 @@ import { ShieldAlert, ShieldCheck, Users } from "lucide-react";
 import { createRecordAction } from "@/server/actions/master";
 import type { BackupReport } from "@/engine/backup";
 import { Button } from "@/components/ui/button";
-import { ACTOR } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
 const STATUS: Record<BackupReport["status"], { label: string; tone: string }> = {
@@ -33,17 +32,13 @@ export function BackupPanel({
     const key = `${r.brandProcessId}:${c.employeeId}`;
     setBusy(key);
     setError(null);
-    const res = await createRecordAction(
-      "assignment",
-      {
-        employeeId: c.employeeId,
-        brandProcessId: r.brandProcessId,
-        role: "BACKUP",
-        allocationPct: c.suggestedPct,
-        note: "Added from the backup recommendations on the roster page. Remove it here if it is no longer needed.",
-      },
-      ACTOR,
-    );
+    const res = await createRecordAction("assignment", {
+      employeeId: c.employeeId,
+      brandProcessId: r.brandProcessId,
+      role: "BACKUP",
+      allocationPct: c.suggestedPct,
+      note: "Added from the backup recommendations on the roster page. Remove it here if it is no longer needed.",
+    });
     setBusy(null);
     if (!res.ok) return setError(res.error.message);
     onDone(

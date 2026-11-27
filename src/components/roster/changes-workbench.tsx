@@ -13,7 +13,6 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { WEEKDAYS } from "@/components/setup/resources";
-import { ACTOR } from "@/lib/config";
 import { dayLabel, monthTitle } from "@/lib/roster-view";
 import { ChangeDiff, type DiffData } from "./change-diff";
 
@@ -199,7 +198,7 @@ export function ChangesWorkbench({ data, today }: { data: RosterPageData; today:
     setBusy("apply");
     setError(null);
     const parent = view!.roster.version;
-    const r = await applyChangeAction({ rosterId: view!.roster.id, change, actor: ACTOR, today });
+    const r = await applyChangeAction({ rosterId: view!.roster.id, change, today });
     setBusy(null);
     if (!r.ok) return setError(r.error.message);
     setApplied({ result: r.data, parent });

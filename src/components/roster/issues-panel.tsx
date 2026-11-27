@@ -12,7 +12,6 @@ import type { IssueWithAck } from "@/server/services/roster";
 import type { Suggestion } from "@/engine/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ACTOR } from "@/lib/config";
 import { dayLabel, groupBySeverity, issueTarget } from "@/lib/roster-view";
 import { cn } from "@/lib/utils";
 import { SeverityBadge } from "./status-style";
@@ -91,7 +90,6 @@ export function IssuesPanel({
       rosterId,
       issueId: issue.id,
       suggestionIndex: index,
-      actor: ACTOR,
     });
     setBusy(null);
     setConfirming(null);
@@ -113,7 +111,6 @@ export function IssuesPanel({
       rosterId,
       issueId: issue.id,
       note: notes[issue.id] ?? "",
-      actor: ACTOR,
     });
     setBusy(null);
     if (!r.ok) return setError(issue.id, r.error.message);
@@ -137,7 +134,7 @@ export function IssuesPanel({
 
   async function withdraw(issue: IssueWithAck) {
     setBusy(`ack:${issue.id}`);
-    const r = await removeAcknowledgementAction(rosterId, issue.id, ACTOR);
+    const r = await removeAcknowledgementAction(rosterId, issue.id);
     setBusy(null);
     if (!r.ok) return setError(issue.id, r.error.message);
     onDone("Acknowledgement withdrawn.");

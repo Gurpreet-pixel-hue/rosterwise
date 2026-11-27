@@ -4,7 +4,8 @@ export type ServiceErrorCode =
   | "VALIDATION" // the input is malformed or breaks a rule
   | "NOT_FOUND"
   | "CONFLICT" // the data is in a state that does not allow this (stale version, referenced row, ...)
-  | "BLOCKED"; // a business gate said no (e.g. unacknowledged ERRORs block publishing)
+  | "BLOCKED" // a business gate said no (e.g. unacknowledged ERRORs block publishing)
+  | "UNAUTHORIZED"; // no valid passcode session: the write was refused and nothing was changed
 
 /** An expected failure with a stable code, a readable message and optional structured detail. */
 export class ServiceError extends Error {

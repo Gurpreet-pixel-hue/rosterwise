@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
-import { ACTOR } from "@/lib/config";
 import {
   STATUS_CODE,
   STATUS_LABEL,
@@ -147,7 +146,6 @@ export function CellDialog({
         date: target.date,
         status,
         coveredBrandProcessIds: [...covered],
-        actor: ACTOR,
       });
       if (cancelled) return;
       setPreviewing(false);
@@ -182,7 +180,6 @@ export function CellDialog({
       date: target.date,
       status,
       coveredBrandProcessIds: [...covered],
-      actor: ACTOR,
     });
     setBusy(false);
     if (!r.ok) return setError(r.error.message);

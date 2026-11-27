@@ -5,7 +5,6 @@ import { CheckCircle2, Circle } from "lucide-react";
 import { approvePodAction, revokePodApprovalAction } from "@/server/actions/roster";
 import type { RosterRefs } from "@/server/pageData";
 import { Button } from "@/components/ui/button";
-import { ACTOR } from "@/lib/config";
 import { dayLabel } from "@/lib/roster-view";
 
 interface Approval {
@@ -44,8 +43,8 @@ export function ApprovalPanel({
     setBusy(podId);
     setError(null);
     const r = approve
-      ? await approvePodAction({ rosterId, podId, actor: ACTOR })
-      : await revokePodApprovalAction({ rosterId, podId, actor: ACTOR });
+      ? await approvePodAction({ rosterId, podId })
+      : await revokePodApprovalAction({ rosterId, podId });
     setBusy(null);
     if (!r.ok) return setError(r.error.message);
     onDone(approve ? `${podName} approved.` : `${podName} approval withdrawn.`);

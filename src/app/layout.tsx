@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
 import { AppNav } from "@/components/app-nav";
+import { currentSession } from "@/server/auth/guard";
 
 const plexSans = IBM_Plex_Sans({
   weight: ["400", "500", "600", "700"],
@@ -20,15 +21,16 @@ export const metadata: Metadata = {
   description: "Smart roster management for multi-brand customer operations",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await currentSession();
   return (
     <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <AppNav />
+        <AppNav sessionName={session?.name ?? null} />
         {children}
       </body>
     </html>

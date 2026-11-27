@@ -29,7 +29,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ACTOR } from "@/lib/config";
 import { WEEKDAYS, defBySlug, type Field, type Lookups, type Row } from "./resources";
 
 type Values = Record<string, unknown>;
@@ -239,8 +238,8 @@ export function ResourceManager({
     setError(null);
     const input = toInput(def.fields, values);
     const r = editing?.row
-      ? await updateRecordAction(def.resource, editing.row.id, input, ACTOR)
-      : await createRecordAction(def.resource, input, ACTOR);
+      ? await updateRecordAction(def.resource, editing.row.id, input)
+      : await createRecordAction(def.resource, input);
     setBusy(false);
     if (!r.ok) return setError(r.error.message);
     setEditing(null);
@@ -250,7 +249,7 @@ export function ResourceManager({
 
   async function remove(id: string) {
     setBusy(true);
-    const r = await deleteRecordAction(def.resource, id, ACTOR);
+    const r = await deleteRecordAction(def.resource, id);
     setBusy(false);
     setConfirmDelete(null);
     if (!r.ok) return setNotice(`Not deleted: ${r.error.message}`);

@@ -3,6 +3,7 @@
 // Server actions for rosters. Thin wrappers over services/roster.ts (see there for the rules).
 import { revalidatePath } from "next/cache";
 import { prisma } from "../db";
+import { guarded, withActor } from "../auth/guard";
 import { toResult } from "../errors";
 import {
   acknowledgeIssue,
@@ -23,9 +24,11 @@ import { approvePod, revokePodApproval } from "../services/approval";
 const refresh = (month: string) => revalidatePath(`/roster/${month}`, "layout");
 
 export async function generateRosterAction(input: unknown) {
-  const r = await toResult(() => generateMonth(prisma, input));
-  if (r.ok) refresh(r.data.roster.month);
-  return r;
+  return guarded(async (me) => {
+    const r = await toResult(() => generateMonth(prisma, withActor(input, me)));
+    if (r.ok) refresh(r.data.roster.month);
+    return r;
+  });
 }
 
 export async function getRosterAction(rosterId: string, suggestions = false) {
@@ -42,9 +45,11 @@ export async function previewEditAction(input: unknown) {
 }
 
 export async function saveEditAction(input: unknown) {
-  const r = await toResult(() => saveManualEdit(prisma, input));
-  if (r.ok) revalidatePath("/roster", "layout");
-  return r;
+  return guarded(async (me) => {
+    const r = await toResult(() => saveManualEdit(prisma, withActor(input, me)));
+    if (r.ok) revalidatePath("/roster", "layout");
+    return r;
+  });
 }
 
 /** Show what applying one of an issue's suggestions would do, without saving. */
@@ -53,9 +58,13 @@ export async function previewSuggestionAction(input: unknown) {
 }
 
 export async function applySuggestionAction(input: unknown) {
-  const r = await toResult(() => applySuggestionToRoster(prisma, input, { commit: true }));
-  if (r.ok) revalidatePath("/roster", "layout");
-  return r;
+  return guarded(async (me) => {
+    const r = await toResult(() =>
+      applySuggestionToRoster(prisma, withActor(input, me), { commit: true }),
+    );
+    if (r.ok) revalidatePath("/roster", "layout");
+    return r;
+  });
 }
 
 export async function simulateChangeAction(input: unknown) {
@@ -63,47 +72,55 @@ export async function simulateChangeAction(input: unknown) {
 }
 
 export async function applyChangeAction(input: unknown) {
-  const r = await toResult(() => applyRosterChange(prisma, input));
-  if (r.ok) refresh(r.data.roster.month);
-  return r;
+  return guarded(async (me) => {
+    const r = await toResult(() => applyRosterChange(prisma, withActor(input, me)));
+    if (r.ok) refresh(r.data.roster.month);
+    return r;
+  });
 }
 
 export async function acknowledgeIssueAction(input: unknown) {
-  const r = await toResult(() => acknowledgeIssue(prisma, input));
-  if (r.ok) revalidatePath("/roster", "layout");
-  return r;
+  return guarded(async (me) => {
+    const r = await toResult(() => acknowledgeIssue(prisma, withActor(input, me)));
+    if (r.ok) revalidatePath("/roster", "layout");
+    return r;
+  });
 }
 
-export async function removeAcknowledgementAction(
-  rosterId: string,
-  issueId: string,
-  actor?: string,
-) {
-  const r = await toResult(() => removeAcknowledgement(prisma, rosterId, issueId, actor));
-  if (r.ok) revalidatePath("/roster", "layout");
-  return r;
+export async function removeAcknowledgementAction(rosterId: string, issueId: string) {
+  return guarded(async (me) => {
+    const r = await toResult(() => removeAcknowledgement(prisma, rosterId, issueId, me.name));
+    if (r.ok) revalidatePath("/roster", "layout");
+    return r;
+  });
 }
 
 export async function publishRosterAction(input: unknown) {
-  const r = await toResult(() => publishRoster(prisma, input));
-  if (r.ok) refresh(r.data.roster.month);
-  return r;
+  return guarded(async (me) => {
+    const r = await toResult(() => publishRoster(prisma, withActor(input, me)));
+    if (r.ok) refresh(r.data.roster.month);
+    return r;
+  });
 }
 
 /** Plain-language explanation of one issue: AI-written when a key is configured, else the standard text. */
 export async function explainIssueAction(input: unknown) {
-  return toResult(() => explainRosterIssue(prisma, input));
+  return guarded(() => toResult(() => explainRosterIssue(prisma, input)));
 }
 
 /** A pod lead's sign-off on their pod's slice of a draft version (P5.6). */
 export async function approvePodAction(input: unknown) {
-  const r = await toResult(() => approvePod(prisma, input));
-  if (r.ok) revalidatePath("/roster", "layout");
-  return r;
+  return guarded(async (me) => {
+    const r = await toResult(() => approvePod(prisma, withActor(input, me)));
+    if (r.ok) revalidatePath("/roster", "layout");
+    return r;
+  });
 }
 
 export async function revokePodApprovalAction(input: unknown) {
-  const r = await toResult(() => revokePodApproval(prisma, input));
-  if (r.ok) revalidatePath("/roster", "layout");
-  return r;
+  return guarded(async (me) => {
+    const r = await toResult(() => revokePodApproval(prisma, withActor(input, me)));
+    if (r.ok) revalidatePath("/roster", "layout");
+    return r;
+  });
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { DEMO_MONTH } from "@/lib/config";
+import { SessionBadge } from "@/components/session-badge";
 
 const LINKS = [
   { href: "/", match: "/", label: "Overview", exact: true },
@@ -11,7 +12,7 @@ const LINKS = [
   { href: "/setup", match: "/setup", label: "Setup", exact: false },
 ];
 
-export function AppNav() {
+export function AppNav({ sessionName }: { sessionName: string | null }) {
   const path = usePathname();
   return (
     <header className="border-b border-border bg-card">
@@ -65,6 +66,7 @@ export function AppNav() {
             );
           })}
         </nav>
+        <SessionBadge name={sessionName} />
       </div>
     </header>
   );
