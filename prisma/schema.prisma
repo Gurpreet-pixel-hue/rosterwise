@@ -291,3 +291,14 @@ model PodApproval {
 
   @@unique([rosterId, podId])
 }
+
+// Failed passcode attempts, keyed by a salted hash of the client IP (never the IP itself). The brute-force
+// limit lives here, not in memory, because serverless instances do not share memory. Rows older than the
+// window are deleted on the next attempt.
+model UnlockAttempt {
+  id        String   @id @default(cuid())
+  ipHash    String
+  createdAt DateTime @default(now())
+
+  @@index([ipHash, createdAt])
+}
