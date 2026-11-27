@@ -345,6 +345,33 @@ async function main() {
   log("a published roster is read-only (the dialog says how to change it)");
   await page.keyboard.press("Escape");
 
+  // ---- P5.1 backup recommendations: expose, recommend, add as backup ---------------------------
+  await go(page, `${BASE}/roster/2026-12`);
+  await page.getByRole("tab", { name: "Brand" }).click();
+  await page.getByLabel("Choose brand").selectOption({ label: "Nimbus Gadgets" });
+  await page.getByRole("tab", { name: /^Backups/ }).click();
+  const nimbusCs = page.locator('[data-backup="bp-nimbus-gadgets-cs"]');
+  check(
+    (await nimbusCs.innerText()).includes("No backup"),
+    "Nimbus CS is flagged as having no backup",
+  );
+  const addBtn = nimbusCs.getByRole("button", { name: /^Add .* as backup/ }).first();
+  const who = (await addBtn.getAttribute("aria-label"))!.replace(/^Add | as backup.*$/g, "");
+  await shot(page, "19-p5-backup-recommendations");
+  await addBtn.click();
+  await page.waitForFunction(() =>
+    /as a backup \(\d+%\) for Nimbus Gadgets \/ CS/.test(document.body.innerText),
+  );
+  await page.waitForFunction(() =>
+    document
+      .querySelector('[data-backup="bp-nimbus-gadgets-cs"]')
+      ?.textContent?.includes("Has backup"),
+  );
+  log(
+    `P5.1: Nimbus CS was exposed; added ${who} as a backup in one click and it now reads "Has backup"`,
+  );
+  await shot(page, "20-p5-backup-added");
+
   // ---- setup: CRUD round trip -------------------------------------------------------------
   await go(page, `${BASE}/setup/brand-processes`);
   await shot(page, "16-setup-brand-rules");

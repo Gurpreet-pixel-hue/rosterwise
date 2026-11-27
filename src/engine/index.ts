@@ -17,3 +17,10 @@ export {
 export { explainIssue } from "./explain";
 export { simulateChange, applyChange, type SimulationResult } from "./change";
 export { coverageTable, type CoverageTable, type CoverageCell } from "./coverage";
+export {
+  backupReport,
+  DEFAULT_BACKUP_PCT,
+  type BackupReport,
+  type BackupCandidate,
+  type BackupStatus,
+} from "./backup";

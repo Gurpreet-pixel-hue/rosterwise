@@ -122,6 +122,16 @@ describe.skipIf(!HAS_DB)("what the P4 UI relies on (integration, real Postgres)"
         covering: 1,
       });
       expect(Object.keys(page.view!.explanations).length).toBe(page.view!.issues.length);
+      // backup recommendations ride along: Nimbus is exposed, Coastal is covered
+      expect(page.backups.length).toBe(34);
+      expect(
+        page.backups.find((b) => b.brandName === "Nimbus Gadgets" && b.processCode === "CS")
+          ?.status,
+      ).toBe("EXPOSED");
+      expect(
+        page.backups.find((b) => b.brandName === "Coastal Candles" && b.processCode === "CS")
+          ?.status,
+      ).toBe("COVERED_BY_BACKUP");
     });
   });
 

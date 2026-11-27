@@ -1,6 +1,7 @@
 // Everything the roster and setup pages need besides the roster itself: names and rules for pods,
 // employees, brands, brand-processes, assignments, holidays and leave. One read, plain serialisable data.
 import type { PrismaClient } from "@prisma/client";
+import { backupReport, type BackupReport } from "../engine/backup";
 import { monthDates, weeksOfMonth } from "../engine/calendar";
 import { loadEngineInput } from "./loadEngineInput";
 import {
@@ -60,6 +61,8 @@ export interface RosterPageData {
   /** The latest version's view, or null when the month has not been generated yet. */
   view: RosterView | null;
   refs: RosterRefs;
+  /** Backup recommendations for every brand-process (the Backups panel filters to the current view). */
+  backups: BackupReport[];
 }
 
 export async function loadRefs(prisma: PrismaClient, month: string): Promise<RosterRefs> {
@@ -97,10 +100,11 @@ export async function loadRefs(prisma: PrismaClient, month: string): Promise<Ros
 }
 
 export async function loadRosterPage(prisma: PrismaClient, month: string): Promise<RosterPageData> {
-  const [latest, versions, refs] = await Promise.all([
+  const [latest, versions, refs, input] = await Promise.all([
     latestRoster(prisma, month),
     listRosterVersions(prisma, month),
     loadRefs(prisma, month),
+    loadEngineInput(prisma, month),
   ]);
   const view = latest ? await getRoster(prisma, latest.id, { suggestions: true }) : null;
   return {
@@ -110,6 +114,7 @@ export async function loadRosterPage(prisma: PrismaClient, month: string): Promi
     versions,
     view,
     refs,
+    backups: backupReport(input),
   };
 }
 

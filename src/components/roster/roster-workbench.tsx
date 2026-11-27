@@ -38,6 +38,7 @@ import {
   type ViewKind,
 } from "@/lib/roster-view";
 import { cn } from "@/lib/utils";
+import { BackupPanel } from "./backup-panel";
 import { CellDialog, type CellTarget } from "./cell-dialog";
 import { IssuesPanel } from "./issues-panel";
 import { RosterGrid } from "./roster-grid";
@@ -57,7 +58,7 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
   const [search, setSearch] = useState<string>("");
   const [date, setDate] = useState<string>(data.monthDates[0]);
   const [bpSel, setBpSel] = useState<string | null>(null);
-  const [side, setSide] = useState<"issues" | "day">("issues");
+  const [side, setSide] = useState<"issues" | "day" | "backups">("issues");
   const [cell, setCell] = useState<CellTarget | null>(null);
   const [highlight, setHighlight] = useState<{ key: string } | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
@@ -91,6 +92,13 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
     () => (scoped && view ? issuesInView(view.issues, employeeIds, bpIds) : (view?.issues ?? [])),
     [scoped, view, employeeIds, bpIds],
   );
+  const viewBackups = useMemo(
+    () => data.backups.filter((b) => bpIds.has(b.brandProcessId)),
+    [data.backups, bpIds],
+  );
+  const exposedCount = viewBackups.filter(
+    (b) => b.status === "EXPOSED" || b.status === "NO_STAFF",
+  ).length;
   const entries = useMemo(() => entryIndex(view?.entries ?? []), [view]);
   const byCell = useMemo(() => issuesByCell(view?.issues ?? []), [view]);
   const byBp = useMemo(() => issuesByBpDay(view?.issues ?? []), [view]);
@@ -462,6 +470,7 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
                     [
                       ["issues", `Issues (${reviewCount(shownIssues)})`],
                       ["day", "Who's working"],
+                      ["backups", `Backups (${exposedCount})`],
                     ] as const
                   ).map(([id, label]) => (
                     <button
@@ -495,7 +504,9 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
                       </span>
                     </label>
                   )}
-                  {side === "issues" ? (
+                  {side === "backups" ? (
+                    <BackupPanel reports={viewBackups} onDone={refresh} />
+                  ) : side === "issues" ? (
                     <IssuesPanel
                       issues={shownIssues}
                       names={{
