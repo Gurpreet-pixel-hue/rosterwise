@@ -313,7 +313,7 @@ is recorded here as soon as it is made.
 64. **The name in "Editing as ..." is self-declared.** The session cookie is HMAC-signed, so the name cannot be altered
     afterwards, but whoever knows the passcode types whatever name they like. The audit log therefore records "which
     session said it was whom", not a verified identity. The client can never choose the actor: the server overwrites it
-    from the session (tested, including a client that sends `actor: "evil"`).
+    from the session (tested, including a client that sends a different `actor`).
 65. **Everything readable is public**: rosters, employee names, leave, setup data and CSV exports. That is acceptable
     only because the data is fictional. Real employee data would need authentication on reads too.
 66. **Fail closed.** If `DEMO_PASSCODE` is unset or empty, or `SESSION_SECRET` is under 32 characters, every write is
