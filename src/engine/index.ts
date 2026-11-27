@@ -24,3 +24,4 @@ export {
   type BackupCandidate,
   type BackupStatus,
 } from "./backup";
+export { fairnessReport, type FairnessReport, type FairnessRow, type Spread } from "./fairness";

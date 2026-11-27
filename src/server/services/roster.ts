@@ -13,6 +13,7 @@ import { Prisma, type PrismaClient, type Roster } from "@prisma/client";
 import type { z } from "zod";
 import { analyzeRoster, compOffEarnedFor } from "../../engine/analyze";
 import { applyEdits } from "../../engine/edit";
+import { fairnessReport, type FairnessReport } from "../../engine/fairness";
 import { coverageTable, type CoverageTable } from "../../engine/coverage";
 import { explainIssue } from "../../engine/explain";
 import { diffRosters, type CellChange } from "../../engine/diff";
@@ -271,6 +272,19 @@ export async function getRoster(
     coverage: coverageTable(input, draft),
     explanations: Object.fromEntries(issues.map((i) => [i.id, explainIssue(i, input)])),
   };
+}
+
+/** Who works the Sundays and holidays of this roster, and how evenly (P5.3). Uses the same overlaid draft. */
+export async function fairnessForRoster(
+  prisma: PrismaClient,
+  rosterId: string,
+): Promise<FairnessReport> {
+  const roster = await rosterRow(prisma, rosterId);
+  const [input, draft] = await Promise.all([
+    loadEngineInput(prisma, roster.month),
+    loadDraft(prisma, roster),
+  ]);
+  return fairnessReport(input, draft);
 }
 
 export async function listRosterVersions(

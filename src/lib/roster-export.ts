@@ -1,6 +1,7 @@
 // What each CSV export contains (CLAUDE.md P5.2). Pure: the route handler loads the data, this builds the rows,
 // so the same view rules (roster-view.ts) decide who and what is exported as decide what is on screen.
 import type { CoverageTable } from "@/engine/coverage";
+import type { FairnessReport } from "@/engine/fairness";
 import type { DraftEntry, Issue } from "@/engine/types";
 import type { RosterRefs } from "@/server/pageData";
 import {
@@ -16,7 +17,7 @@ import {
 } from "./roster-view";
 import { toCsv } from "./csv";
 
-export const EXPORT_WHAT = ["grid", "coverage", "issues"] as const;
+export const EXPORT_WHAT = ["grid", "coverage", "issues", "fairness"] as const;
 export type ExportWhat = (typeof EXPORT_WHAT)[number];
 
 export const isViewKind = (v: string): v is ViewKind =>
@@ -121,6 +122,51 @@ export function issueRows(args: {
       i.message,
       i.acknowledgement ? "yes" : "",
       i.acknowledgement?.note ?? "",
+    ]);
+  }
+  return rows;
+}
+
+/** One row per person: how many Sundays and public holidays they work and are off, for the people in the view. */
+export function fairnessRows(args: {
+  kind: ViewKind;
+  value: string;
+  report: FairnessReport;
+  refs: RosterRefs;
+}): string[][] {
+  const { kind, value, report, refs } = args;
+  const pods = new Map(refs.pods.map((p) => [p.id, p.name]));
+  const inView = new Set(visibleEmployees(kind, value, refs).map((e) => e.id));
+  const yn = (b: boolean) => (b ? "yes" : "no");
+  const rows: string[][] = [
+    [
+      "Employee",
+      "Pod",
+      "Could work Sundays",
+      "Could work holidays",
+      "Sundays worked",
+      "Sundays off",
+      "Weekly offs on Sunday",
+      "Holidays worked",
+      "Holidays off",
+      "Premium days worked (Sundays + holidays)",
+      "Working days",
+    ],
+  ];
+  for (const r of report.rows) {
+    if (!inView.has(r.employeeId)) continue;
+    rows.push([
+      r.name,
+      pods.get(r.podId) ?? "",
+      yn(r.sundayEligible),
+      yn(r.holidayEligible),
+      String(r.sundaysWorked),
+      String(r.sundaysOff),
+      String(r.weeklyOffsOnSunday),
+      String(r.holidaysWorked),
+      String(r.holidaysOff),
+      String(r.premiumDaysWorked),
+      String(r.workingDays),
     ]);
   }
   return rows;

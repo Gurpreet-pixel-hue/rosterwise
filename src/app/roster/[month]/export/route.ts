@@ -4,6 +4,7 @@ import {
   csvFor,
   coverageRows,
   exportFileName,
+  fairnessRows,
   gridRows,
   isExportWhat,
   isViewKind,
@@ -17,11 +18,12 @@ import {
 } from "@/lib/roster-view";
 import { prisma } from "@/server/db";
 import { loadRosterPage } from "@/server/pageData";
+import { fairnessForRoster } from "@/server/services/roster";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /roster/2026-12/export?what=grid|coverage|issues&kind=company|pod|brand|process|employee&value=<id>
+ * GET /roster/2026-12/export?what=grid|coverage|issues|fairness&kind=company|pod|brand|process|employee&value=<id>
  * Read-only: it exports exactly what the same view shows, from the latest version of the month.
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ month: string }> }) {
@@ -56,6 +58,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ mont
       value: v,
       monthDates: data.monthDates,
       coverage: data.view.coverage,
+      refs: data.refs,
+    });
+  } else if (what === "fairness") {
+    rows = fairnessRows({
+      kind,
+      value: v,
+      report: await fairnessForRoster(prisma, data.view.roster.id),
       refs: data.refs,
     });
   } else {

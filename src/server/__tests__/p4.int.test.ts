@@ -6,6 +6,7 @@ import { ServiceError } from "../errors";
 import {
   applySuggestionToRoster,
   editCells,
+  fairnessForRoster,
   generateMonth,
   getRoster,
   saveManualEdit,
@@ -132,6 +133,34 @@ describe.skipIf(!HAS_DB)("what the P4 UI relies on (integration, real Postgres)"
         page.backups.find((b) => b.brandName === "Coastal Candles" && b.processCode === "CS")
           ?.status,
       ).toBe("COVERED_BY_BACKUP");
+    });
+  });
+
+  describe("fairness report (P5.3)", () => {
+    it("reports the saved roster: 32 people, 3 Sundays and 2 holidays, holidays worked equal comp-off credits, and follows an edit", async () => {
+      const { roster } = await gen(DEC);
+      const r = await fairnessForRoster(prisma(), roster.id);
+      expect(r.rows.length).toBe(32);
+      expect(r.sundays).toBe(3);
+      expect(r.holidays).toBe(2);
+      expect(r.rows.reduce((n, x) => n + x.holidaysWorked, 0)).toBe(16);
+      const ananya = r.rows.find((x) => x.employeeId === "emp-ananya-reddy")!;
+      expect(ananya.sundaysWorked).toBe(3);
+
+      // the committed edit shows up: Ishita off on Sunday 13 Dec
+      const before = r.rows.find((x) => x.employeeId === ISHITA)!;
+      await saveManualEdit(prisma(), {
+        rosterId: roster.id,
+        employeeId: ISHITA,
+        date: "2026-12-13",
+        status: "WEEKLY_OFF",
+        coveredBrandProcessIds: [],
+        actor: "tester",
+      });
+      const after = (await fairnessForRoster(prisma(), roster.id)).rows.find(
+        (x) => x.employeeId === ISHITA,
+      )!;
+      expect(after.sundaysWorked).toBe(before.sundaysWorked - 1);
     });
   });
 

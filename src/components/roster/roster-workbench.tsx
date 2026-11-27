@@ -10,6 +10,7 @@ import {
   GitCompare,
   PanelRightClose,
   PanelRightOpen,
+  Scale,
   Search,
   X,
 } from "lucide-react";
@@ -269,6 +270,14 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
             >
               <GitCompare className="size-3.5 text-muted-foreground" /> What if...
             </Link>
+            {view && (
+              <Link
+                href={`/roster/${month}/fairness`}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                <Scale className="size-3.5 text-muted-foreground" /> Fairness
+              </Link>
+            )}
             {view && !confirmRegen && (
               <Button
                 variant="outline"

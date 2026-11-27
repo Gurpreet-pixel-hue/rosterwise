@@ -345,6 +345,25 @@ async function main() {
   log("a published roster is read-only (the dialog says how to change it)");
   await page.keyboard.press("Escape");
 
+  // ---- P5.3 fairness report ------------------------------------------------------------------
+  await go(page, `${BASE}/roster/2026-12/fairness`);
+  const summary = await page.getByTestId("fairness-summary").innerText();
+  check(/Sundays worked/.test(summary) && /spread/.test(summary), "fairness summary shows spreads");
+  const frows = await page.getByTestId("fairness-table").locator("tbody tr").count();
+  check(frows === 32, `fairness table lists all 32 people (${frows})`);
+  check(
+    (await page.getByTestId("fairness-table").innerText()).includes("brands closed"),
+    "people whose brands are closed on those days are labelled and left out of the comparison",
+  );
+  await shot(page, "21-p5-fairness");
+  const fres = await page.request.get(`${BASE}/roster/2026-12/export?what=fairness&kind=company`);
+  check(fres.status() === 200, "fairness CSV answers 200");
+  check(
+    (await fres.text()).trim().split("\r\n").length === 33,
+    "fairness CSV: a header and 32 people",
+  );
+  log(`P5.3: fairness page lists ${frows} people with spreads; its CSV has 33 lines`);
+
   // ---- P5.1 backup recommendations: expose, recommend, add as backup ---------------------------
   await go(page, `${BASE}/roster/2026-12`);
   await page.getByRole("tab", { name: "Brand" }).click();
