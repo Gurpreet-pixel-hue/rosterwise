@@ -33,12 +33,14 @@ import type {
 import { validateRoster } from "../../engine/validate";
 import { writeAudit, type Db } from "../audit";
 import { ServiceError, parse } from "../errors";
+import { explainIssueText, type ExplainOptions, type ExplainResult } from "../ai";
 import { loadEngineInput } from "../loadEngineInput";
 import {
   AckInput,
   ApplyChangeInput,
   ApplySuggestionInput,
   CompareVersionsInput,
+  ExplainIssueInput,
   EntryStatusSchema,
   GenerateInput,
   ManualEditInput,
@@ -294,6 +296,30 @@ const mondayOf = (date: string): string => {
   const days = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const;
   return addDays(date, -days.indexOf(weekdayOf(date)));
 };
+
+/**
+ * Explain one issue of a roster in plain language: by the model when a key is configured and the call works, else
+ * by the engine's own deterministic text (labelled). Only that issue's text is sent out (see ai.ts).
+ */
+export async function explainRosterIssue(
+  prisma: PrismaClient,
+  raw: unknown,
+  opts: ExplainOptions = {},
+): Promise<ExplainResult> {
+  const { rosterId, issueId } = parse(ExplainIssueInput, raw, "explain request");
+  const roster = await rosterRow(prisma, rosterId);
+  const [input, draft] = await Promise.all([
+    loadEngineInput(prisma, roster.month),
+    loadDraft(prisma, roster),
+  ]);
+  const issue = analyzeRoster(input, draft).find((i) => i.id === issueId);
+  if (!issue)
+    throw new ServiceError(
+      "NOT_FOUND",
+      `Issue "${issueId}" is not on this roster (it may have been resolved already).`,
+    );
+  return explainIssueText(issue, explainIssue(issue, input), opts);
+}
 
 export interface VersionComparison {
   month: string;

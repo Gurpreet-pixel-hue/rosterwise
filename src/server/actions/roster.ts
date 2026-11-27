@@ -8,6 +8,7 @@ import {
   acknowledgeIssue,
   applyRosterChange,
   applySuggestionToRoster,
+  explainRosterIssue,
   generateMonth,
   getRoster,
   listRosterVersions,
@@ -86,4 +87,9 @@ export async function publishRosterAction(input: unknown) {
   const r = await toResult(() => publishRoster(prisma, input));
   if (r.ok) refresh(r.data.roster.month);
   return r;
+}
+
+/** Plain-language explanation of one issue: AI-written when a key is configured, else the standard text. */
+export async function explainIssueAction(input: unknown) {
+  return toResult(() => explainRosterIssue(prisma, input));
 }

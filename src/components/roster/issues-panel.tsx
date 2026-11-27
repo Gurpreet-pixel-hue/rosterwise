@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Crosshair } from "lucide-react";
 import {
   acknowledgeIssueAction,
   applySuggestionAction,
+  explainIssueAction,
   removeAcknowledgementAction,
 } from "@/server/actions/roster";
 import type { IssueWithAck } from "@/server/services/roster";
@@ -70,6 +71,9 @@ export function IssuesPanel({
   const [confirming, setConfirming] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [explained, setExplained] = useState<
+    Record<string, { text: string; source: "ai" | "deterministic"; note?: string } | "loading">
+  >({});
 
   const setError = (id: string, m: string | null) =>
     setErrors((e) => {
@@ -114,6 +118,21 @@ export function IssuesPanel({
     setBusy(null);
     if (!r.ok) return setError(issue.id, r.error.message);
     onDone("Acknowledged. The note is saved with the roster and the audit log.");
+  }
+
+  async function explain(issue: IssueWithAck) {
+    setExplained((e) => ({ ...e, [issue.id]: "loading" }));
+    setError(issue.id, null);
+    const r = await explainIssueAction({ rosterId, issueId: issue.id });
+    if (!r.ok) {
+      setExplained((e) => {
+        const n = { ...e };
+        delete n[issue.id];
+        return n;
+      });
+      return setError(issue.id, r.error.message);
+    }
+    setExplained((e) => ({ ...e, [issue.id]: r.data }));
   }
 
   async function withdraw(issue: IssueWithAck) {
@@ -240,6 +259,45 @@ export function IssuesPanel({
                               {rationale}
                             </p>
                           )}
+                          {
+                            <div className="space-y-1.5">
+                              {explained[issue.id] === undefined && (
+                                <Button
+                                  size="xs"
+                                  variant="outline"
+                                  onClick={() => explain(issue)}
+                                  aria-label="Explain this issue in plain language"
+                                >
+                                  Explain
+                                </Button>
+                              )}
+                              {explained[issue.id] === "loading" && (
+                                <p className="text-xs text-muted-foreground" aria-live="polite">
+                                  Explaining...
+                                </p>
+                              )}
+                              {typeof explained[issue.id] === "object" && (
+                                <div
+                                  className="rounded-[4px] border border-border bg-muted/50 p-2 text-xs leading-relaxed"
+                                  data-explanation={
+                                    (explained[issue.id] as { source: string }).source
+                                  }
+                                >
+                                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                    {(explained[issue.id] as { source: string }).source === "ai"
+                                      ? "AI explanation (written from this issue's text only)"
+                                      : "Standard explanation"}
+                                  </div>
+                                  {(explained[issue.id] as { text: string }).text}
+                                  {(explained[issue.id] as { note?: string }).note && (
+                                    <div className="mt-1 text-[11px] text-muted-foreground">
+                                      {(explained[issue.id] as { note?: string }).note}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          }
                           {issue.changedSince && (
                             <p className="rounded-[4px] border border-[#FDE68A] bg-[#FFFBEB] p-2 text-xs text-[#854D0E]">
                               You acknowledged this when it read: &ldquo;

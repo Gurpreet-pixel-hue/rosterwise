@@ -167,6 +167,11 @@ export const ApplySuggestionInput = z.object({
   actor: actorSchema,
 });
 
+export const ExplainIssueInput = z.object({
+  rosterId: id,
+  issueId: z.string().min(1).max(200),
+});
+
 export const CompareVersionsInput = z.object({
   month: MonthString,
   from: z.number().int().min(1).max(10000),

@@ -8,6 +8,7 @@ import {
   applySuggestionToRoster,
   compareVersions,
   editCells,
+  explainRosterIssue,
   fairnessForRoster,
   generateMonth,
   getRoster,
@@ -135,6 +136,56 @@ describe.skipIf(!HAS_DB)("what the P4 UI relies on (integration, real Postgres)"
         page.backups.find((b) => b.brandName === "Coastal Candles" && b.processCode === "CS")
           ?.status,
       ).toBe("COVERED_BY_BACKUP");
+    });
+  });
+
+  describe("AI explanation (P5.5)", () => {
+    it("explains a real issue: standard text without a key, the model's text with one, NOT_FOUND for a stale id; nothing is written", async () => {
+      const { roster } = await gen(DEC);
+      const view = await getRoster(prisma(), roster.id, { suggestions: true });
+      const issue = view.issues.find((i) => i.code === "WEEKLY_OFF_NOT_GRANTED")!;
+      const before = await counts();
+
+      const plain = await explainRosterIssue(
+        prisma(),
+        { rosterId: roster.id, issueId: issue.id },
+        { apiKey: "", now: () => 5_000_000 },
+      );
+      expect(plain.source).toBe("deterministic");
+      expect(plain.text).toBe(view.explanations[issue.id]);
+
+      let sentBody = "";
+      const fakeFetch = (async (_u: string, init: RequestInit) => {
+        sentBody = String(init.body);
+        return new Response(
+          JSON.stringify({ content: [{ type: "text", text: "Ananya is the only cover." }] }),
+          {
+            status: 200,
+          },
+        );
+      }) as typeof fetch;
+      const ai = await explainRosterIssue(
+        prisma(),
+        { rosterId: roster.id, issueId: issue.id },
+        { apiKey: "sk-test", fetchImpl: fakeFetch, now: () => 9_000_000 },
+      );
+      expect(ai).toEqual({ source: "ai", text: "Ananya is the only cover." });
+      // only this issue went out: its message is there, an unrelated employee is not
+      expect(sentBody).toContain(issue.message.slice(0, 40));
+      expect(sentBody).not.toContain("Divya Menon");
+
+      expect(
+        (
+          await failure(
+            explainRosterIssue(
+              prisma(),
+              { rosterId: roster.id, issueId: "NOPE:1" },
+              { apiKey: "" },
+            ),
+          )
+        ).code,
+      ).toBe("NOT_FOUND");
+      expect(await counts()).toEqual(before);
     });
   });
 

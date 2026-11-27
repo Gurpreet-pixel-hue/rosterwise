@@ -386,6 +386,26 @@ async function main() {
   );
   log(`P5.3: fairness page lists ${frows} people with spreads; its CSV has 33 lines`);
 
+  // ---- P5.5 Explain button (opt-in: it would call the live API if the server has a key) -----------
+  // Start the server with ANTHROPIC_API_KEY= (empty) to check the standard-explanation fallback without any call.
+  if (process.env.WALKTHROUGH_EXPLAIN) {
+    await go(page, `${BASE}/roster/2026-12`);
+    await page.getByRole("tab", { name: /^Issues/ }).click();
+    const card = page.locator("[data-issue]").filter({ hasText: "WEEKLY_OFF_NOT_GRANTED" }).first();
+    if (await card.getByRole("button", { name: "Show details" }).count())
+      await card.getByRole("button", { name: "Show details" }).click();
+    await card.getByRole("button", { name: "Explain this issue in plain language" }).click();
+    const box = card.locator("[data-explanation]");
+    await box.waitFor();
+    const source = await box.getAttribute("data-explanation");
+    log(
+      `P5.5: Explain returned a "${source}" explanation: "${(await box.innerText()).replace(/\s+/g, " ").slice(0, 110)}..."`,
+    );
+    if (process.env.WALKTHROUGH_EXPLAIN === "fallback")
+      check(source === "deterministic", "with no key the standard explanation is shown");
+    await shot(page, "23-p5-explain");
+  }
+
   // ---- P5.1 backup recommendations: expose, recommend, add as backup ---------------------------
   await go(page, `${BASE}/roster/2026-12`);
   await page.getByRole("tab", { name: "Brand" }).click();
