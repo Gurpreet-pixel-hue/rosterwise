@@ -295,12 +295,54 @@ is recorded here as soon as it is made.
     never the key. Without `ANTHROPIC_API_KEY`, on any error, a timeout (15 s) or an empty answer, the deterministic
     explanation is returned and labelled "Standard explanation" with the reason. A per-process cap of 10 calls a
     minute is a guard against a runaway client, **not** cost control: on a public deployment the real control is the
-    P6 passcode, which must also guard this action. The live API call is not exercised by the tests (they inject
+    passcode (63), and `explainIssueAction` is behind it. The live API call is not exercised by the tests (they inject
     `fetch`).
 62. **Pod-lead approval (P5.6)** is per pod, per DRAFT version, cleared when any of that pod's cells is edited, and absent
     on a new version. Publishing requires every pod with an active employee only when `REQUIRE_POD_APPROVAL` is set
-    (off by default, so existing flows are unchanged). **There is no login, so the approver's name is recorded, not
-    verified**: the P6 passcode session supplies a display name from the server, and a check that it matches the pod
-    lead belongs there.
+    (off by default, so existing flows are unchanged). **The approver's name is recorded, not verified**: it is the
+    display name typed at unlock (64), taken from the signed session on the server. Nothing checks that it is the
+    pod's lead, so "approved by Nisha" means "someone with the passcode said they were Nisha".
+
+## Access and deployment (P6)
+
+63. **Access model: public read, shared-secret write, no per-user accounts** (Owner ruling, `REVIEW-P3.md`). Anyone can
+    view; every change (setup, generate, edit, apply, publish, acknowledge, approve, explain) needs the shared
+    passcode. Previews and what-if simulations write nothing and stay public. One guard, `guarded()`, wraps every
+    mutating server action, and a test lists the real exports of both action modules and fails if any non-public one
+    does not refuse without a session.
+64. **The name in "Editing as ..." is self-declared.** The session cookie is HMAC-signed, so the name cannot be altered
+    afterwards, but whoever knows the passcode types whatever name they like. The audit log therefore records "which
+    session said it was whom", not a verified identity. The client can never choose the actor: the server overwrites it
+    from the session (tested, including a client that sends `actor: "evil"`).
+65. **Everything readable is public**: rosters, employee names, leave, setup data and CSV exports. That is acceptable
+    only because the data is fictional. Real employee data would need authentication on reads too.
+66. **Fail closed.** If `DEMO_PASSCODE` is unset or empty, or `SESSION_SECRET` is under 32 characters, every write is
+    refused with `UNAUTHORIZED`, locally and in production, and the unlock endpoint answers 503. The app never falls
+    back to "open".
+67. **Sessions are stateless: 12 hours, no server-side store.** "Lock" clears the cookie in that browser only. A copied
+    cookie works until it expires. Rotating `SESSION_SECRET` ends every session at once.
+68. **Brute-force limit:** 5 wrong passcodes per 15 minutes per client, kept in Postgres (an in-memory counter does not
+    survive serverless instances). The client is a salted hash of its IP, never the IP. The attempt is recorded
+    _before_ the passcode is compared, so parallel guesses cannot beat the limit (a 30-way test failed on the earlier
+    check-then-record order and passes now). The IP comes from `x-forwarded-for` / `x-real-ip`, which is trustworthy on
+    Vercel only; behind another proxy it could be spoofed. There is **no global limit**, because one would let an
+    attacker lock evaluators out. Passcode strength carries the weight instead: the production passcode is 20 random
+    characters from a 31-symbol alphabet (about 99 bits). A person who can rotate IPs and guess 5 times each from every
+    one still faces that.
+69. **Cross-site requests:** `/api/unlock` and `/api/lock` refuse a request whose `Origin` is not this site (403, and a
+    missing Origin is refused). Server actions rely on Next.js's built-in Origin check plus `SameSite=Lax`.
+70. **Security headers** are set on every route (CSP, `X-Frame-Options: DENY`, nosniff, Referrer-Policy,
+    Permissions-Policy, HSTS in production). **The CSP keeps `'unsafe-inline'` for scripts and styles**, because Next.js
+    emits inline bootstrap scripts and a nonce-based policy needs middleware that makes every route dynamic. The app
+    renders no user-supplied HTML (React escapes text), so framing, form, connection, base and object restrictions are
+    the directives doing the work. Use nonces if rich text is ever added.
+71. **One shared production database** (Neon, free tier, pooled connection with `pgbouncer=true` added in code). Anyone
+    with the passcode edits the same data as everyone else; there are no per-evaluator sandboxes. `pnpm db:reset-demo`
+    re-seeds it (needs `SEED_ALLOW_REMOTE=1` against a remote database) and also clears the unlock-attempt table, so it
+    lifts a lockout. The public demo's fixed "today" is 27 Nov 2026 (`DEMO_TODAY`), so December and January stay
+    "the future" however late someone opens it.
+72. **Previews and simulations are public and cost CPU.** They are not rate limited beyond the platform's own limits.
+    Generation with suggestions grows faster than linearly with organisation size (see `docs/METRICS.md`), which also
+    bounds how large a deployment this design suits.
 
 _More assumptions are added per phase._
