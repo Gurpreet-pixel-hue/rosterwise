@@ -41,6 +41,7 @@ import {
   type ViewKind,
 } from "@/lib/roster-view";
 import { cn } from "@/lib/utils";
+import { ApprovalPanel } from "./approval-panel";
 import { BackupPanel } from "./backup-panel";
 import { CellDialog, type CellTarget } from "./cell-dialog";
 import { IssuesPanel } from "./issues-panel";
@@ -61,7 +62,7 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
   const [search, setSearch] = useState<string>("");
   const [date, setDate] = useState<string>(data.monthDates[0]);
   const [bpSel, setBpSel] = useState<string | null>(null);
-  const [side, setSide] = useState<"issues" | "day" | "backups">("issues");
+  const [side, setSide] = useState<"issues" | "day" | "backups" | "approval">("issues");
   const [cell, setCell] = useState<CellTarget | null>(null);
   const [highlight, setHighlight] = useState<{ key: string } | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
@@ -99,6 +100,11 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
     () => data.backups.filter((b) => bpIds.has(b.brandProcessId)),
     [data.backups, bpIds],
   );
+  const podsWithPeople = new Set(refs.employees.filter((e) => e.isActive).map((e) => e.podId)).size;
+  const approvedPods = view?.podApprovals.length ?? 0;
+  const missingApprovals = view?.requirePodApprovals
+    ? Math.max(0, podsWithPeople - approvedPods)
+    : 0;
   const exposedCount = viewBackups.filter(
     (b) => b.status === "EXPOSED" || b.status === "NO_STAFF",
   ).length;
@@ -312,13 +318,15 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
             {view && (
               <Button
                 onClick={publish}
-                disabled={!editable || blockers > 0 || busy !== null}
+                disabled={!editable || blockers > 0 || missingApprovals > 0 || busy !== null}
                 title={
                   !editable
                     ? (readOnlyReason ?? "")
                     : blockers > 0
                       ? `${blockers} error(s) must be fixed or acknowledged first`
-                      : "Publish this version"
+                      : missingApprovals > 0
+                        ? `${missingApprovals} pod(s) still need their lead's approval`
+                        : "Publish this version"
                 }
               >
                 {busy === "publish"
@@ -509,8 +517,9 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
                   {(
                     [
                       ["issues", `Issues (${reviewCount(shownIssues)})`],
-                      ["day", "Who's working"],
+                      ["day", "Day"],
                       ["backups", `Backups (${exposedCount})`],
+                      ["approval", `Approval (${approvedPods}/${podsWithPeople})`],
                     ] as const
                   ).map(([id, label]) => (
                     <button
@@ -519,8 +528,9 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
                       role="tab"
                       aria-selected={side === id}
                       onClick={() => setSide(id)}
+                      title={id === "day" ? "Who's working on the selected date" : undefined}
                       className={cn(
-                        "-mb-px border-b-2 px-3 py-2 text-xs font-medium transition-colors",
+                        "-mb-px whitespace-nowrap border-b-2 px-2.5 py-2 text-xs font-medium transition-colors",
                         side === id
                           ? "border-primary text-foreground"
                           : "border-transparent text-muted-foreground hover:text-foreground",
@@ -544,7 +554,16 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
                       </span>
                     </label>
                   )}
-                  {side === "backups" ? (
+                  {side === "approval" ? (
+                    <ApprovalPanel
+                      rosterId={view.roster.id}
+                      refs={refs}
+                      approvals={view.podApprovals}
+                      required={view.requirePodApprovals}
+                      editable={editable}
+                      onDone={refresh}
+                    />
+                  ) : side === "backups" ? (
                     <BackupPanel reports={viewBackups} onDone={refresh} />
                   ) : side === "issues" ? (
                     <IssuesPanel

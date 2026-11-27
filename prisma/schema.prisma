@@ -77,6 +77,7 @@ model Pod {
   lead      Employee?  @relation("PodLead", fields: [leadId], references: [id], onDelete: SetNull)
   employees Employee[] @relation("PodMembers")
   brands    Brand[]
+  approvals PodApproval[]
 }
 
 model Employee {
@@ -218,6 +219,7 @@ model Roster {
   entries         RosterEntry[]
   auditLogs       AuditLog[]
   issueAcks       IssueAck[]
+  podApprovals    PodApproval[]
 
   @@unique([month, version])
 }
@@ -273,4 +275,19 @@ model IssueAck {
   createdAt DateTime @default(now())
 
   @@unique([rosterId, issueId])
+}
+
+// A pod lead's sign-off on a pod's slice of one roster VERSION (P5.6). Cleared when any of the pod's cells is
+// edited; a new version starts with none. Publishing requires every pod only when REQUIRE_POD_APPROVAL is set.
+model PodApproval {
+  id         String   @id @default(cuid())
+  rosterId   String
+  roster     Roster   @relation(fields: [rosterId], references: [id], onDelete: Cascade)
+  podId      String
+  pod        Pod      @relation(fields: [podId], references: [id], onDelete: Cascade)
+  approvedBy String
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@unique([rosterId, podId])
 }

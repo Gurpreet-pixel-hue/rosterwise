@@ -345,6 +345,22 @@ async function main() {
   log("a published roster is read-only (the dialog says how to change it)");
   await page.keyboard.press("Escape");
 
+  // ---- P5.6 pod-lead approval (January is still a draft) -----------------------------------------
+  await go(page, `${BASE}/roster/2027-01`);
+  await page.getByRole("tab", { name: /^Approval/ }).click();
+  check(
+    (await page.getByRole("tab", { name: "Approval (0/4)" }).count()) === 1,
+    "no pod is approved on a new version",
+  );
+  await page.getByRole("button", { name: "Approve Alpha" }).click();
+  await page.waitForFunction(() => /Approved by manager/.test(document.body.innerText));
+  check(
+    (await page.getByRole("tab", { name: "Approval (1/4)" }).count()) === 1,
+    "one pod approved",
+  );
+  await shot(page, "24-p5-pod-approval");
+  log("P5.6: Alpha approved on the January draft; the tab reads Approval (1/4)");
+
   // ---- P5.4 version comparison ------------------------------------------------------------------
   await go(page, `${BASE}/roster/2026-12/versions`);
   const cmp = page.getByTestId("version-comparison");
@@ -374,7 +390,7 @@ async function main() {
   const frows = await page.getByTestId("fairness-table").locator("tbody tr").count();
   check(frows === 32, `fairness table lists all 32 people (${frows})`);
   check(
-    (await page.getByTestId("fairness-table").innerText()).includes("brands closed"),
+    /no brand open/i.test(await page.getByTestId("fairness-table").innerText()),
     "people whose brands are closed on those days are labelled and left out of the comparison",
   );
   await shot(page, "21-p5-fairness");
@@ -441,10 +457,7 @@ async function main() {
 
   await page.getByRole("tab", { name: /^Backups/ }).click();
   const nimbusCs = page.locator('[data-backup="bp-nimbus-gadgets-cs"]');
-  check(
-    (await nimbusCs.innerText()).includes("No backup"),
-    "Nimbus CS is flagged as having no backup",
-  );
+  check(/no backup/i.test(await nimbusCs.innerText()), "Nimbus CS is flagged as having no backup");
   const addBtn = nimbusCs.getByRole("button", { name: /^Add .* as backup/ }).first();
   const who = (await addBtn.getAttribute("aria-label"))!.replace(/^Add | as backup.*$/g, "");
   await shot(page, "19-p5-backup-recommendations");

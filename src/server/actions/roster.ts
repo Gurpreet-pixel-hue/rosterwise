@@ -18,6 +18,7 @@ import {
   saveManualEdit,
   simulateRosterChange,
 } from "../services/roster";
+import { approvePod, revokePodApproval } from "../services/approval";
 
 const refresh = (month: string) => revalidatePath(`/roster/${month}`, "layout");
 
@@ -92,4 +93,17 @@ export async function publishRosterAction(input: unknown) {
 /** Plain-language explanation of one issue: AI-written when a key is configured, else the standard text. */
 export async function explainIssueAction(input: unknown) {
   return toResult(() => explainRosterIssue(prisma, input));
+}
+
+/** A pod lead's sign-off on their pod's slice of a draft version (P5.6). */
+export async function approvePodAction(input: unknown) {
+  const r = await toResult(() => approvePod(prisma, input));
+  if (r.ok) revalidatePath("/roster", "layout");
+  return r;
+}
+
+export async function revokePodApprovalAction(input: unknown) {
+  const r = await toResult(() => revokePodApproval(prisma, input));
+  if (r.ok) revalidatePath("/roster", "layout");
+  return r;
 }

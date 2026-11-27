@@ -96,10 +96,10 @@ export default async function FairnessPage({ params }: { params: Promise<{ month
       <p className="max-w-3xl text-sm text-muted-foreground">
         Who works the Sundays and public holidays of {monthTitle(month)}, and how evenly. There are{" "}
         {report.sundays} Sundays that are not holidays and {report.holidays} public holidays this
-        month. Staff whose brands are closed on those days ({structural} people here) cannot be
-        asked to work them, so they are shown but left out of the comparison. The engine rotates a
-        holiday duty between people who can do it; a single-person brand has no one to rotate with,
-        which this report makes visible.
+        month. Staff with no brand open on those days (including the backup pool) ({structural}{" "}
+        people here) cannot be asked to work them, so they are shown but left out of the comparison.
+        The engine rotates a holiday duty between people who can do it; a single-person brand has no
+        one to rotate with, which this report makes visible.
       </p>
 
       <dl
@@ -153,7 +153,7 @@ export default async function FairnessPage({ params }: { params: Promise<{ month
                   {r.name}
                   {!r.sundayEligible && !r.holidayEligible && (
                     <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase">
-                      brands closed
+                      no brand open
                     </span>
                   )}
                 </td>

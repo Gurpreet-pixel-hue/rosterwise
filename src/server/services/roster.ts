@@ -35,6 +35,7 @@ import { writeAudit, type Db } from "../audit";
 import { ServiceError, parse } from "../errors";
 import { explainIssueText, type ExplainOptions, type ExplainResult } from "../ai";
 import { loadEngineInput } from "../loadEngineInput";
+import { podApprovalRequired } from "../settings";
 import {
   AckInput,
   ApplyChangeInput,
@@ -95,7 +96,7 @@ const summarise = (r: Roster): RosterSummary => ({
 // Loading
 // ---------------------------------------------------------------------------------------------
 
-async function rosterRow(db: Db, rosterId: string): Promise<Roster> {
+export async function rosterRow(db: Db, rosterId: string): Promise<Roster> {
   const r = await db.roster.findUnique({ where: { id: rosterId } });
   if (!r) throw new ServiceError("NOT_FOUND", `Roster "${rosterId}" was not found`);
   return r;
@@ -105,7 +106,7 @@ export const latestRoster = (db: Db, month: string) =>
   db.roster.findFirst({ where: { month }, orderBy: { version: "desc" } });
 
 /** Only the newest version of a month may be changed: anything else is a stale view. */
-async function requireLatest(db: Db, roster: Roster): Promise<void> {
+export async function requireLatest(db: Db, roster: Roster): Promise<void> {
   const latest = await latestRoster(db, roster.month);
   if (latest && latest.id !== roster.id) {
     throw new ServiceError(
@@ -115,7 +116,7 @@ async function requireLatest(db: Db, roster: Roster): Promise<void> {
   }
 }
 
-function requireDraft(roster: Roster): void {
+export function requireDraft(roster: Roster): void {
   if (roster.status === "PUBLISHED") {
     throw new ServiceError(
       "CONFLICT",
@@ -142,7 +143,7 @@ const monthOfDate = (date: string) => date.slice(0, 7);
  * in between another's check and its write (a publish that validated, then an un-acknowledge, then the publish
  * committing, would otherwise publish an ERROR that is no longer acknowledged).
  */
-async function lockRoster(tx: Db, rosterId: string): Promise<void> {
+export async function lockRoster(tx: Db, rosterId: string): Promise<void> {
   await tx.$queryRaw`SELECT "id" FROM "Roster" WHERE "id" = ${rosterId} FOR UPDATE`;
 }
 
@@ -237,6 +238,14 @@ export interface RosterView {
   coverage: CoverageTable;
   /** `explainIssue` text per issue id, in plain language for the issues panel. */
   explanations: Record<string, string>;
+  /** Pod-lead sign-offs on this version, and whether publishing needs all of them (P5.6). */
+  podApprovals: Array<{
+    podId: string;
+    approvedBy: string;
+    note: string | null;
+    createdAt: string;
+  }>;
+  requirePodApprovals: boolean;
 }
 
 export async function getRoster(
@@ -245,11 +254,12 @@ export async function getRoster(
   opts: { suggestions?: boolean } = {},
 ): Promise<RosterView> {
   const roster = await rosterRow(prisma, rosterId);
-  const [input, loaded, latest, acks] = await Promise.all([
+  const [input, loaded, latest, acks, approvals] = await Promise.all([
     loadEngineInput(prisma, roster.month),
     loadDraftWithOwners(prisma, roster),
     latestRoster(prisma, roster.month),
     prisma.issueAck.findMany({ where: { rosterId } }),
+    prisma.podApproval.findMany({ where: { rosterId }, orderBy: { createdAt: "asc" } }),
   ]);
   const { draft, foreignDates } = loaded;
   const issues = opts.suggestions ? analyzeRoster(input, draft) : validateRoster(input, draft);
@@ -275,6 +285,13 @@ export async function getRoster(
     blockers: unacknowledgedErrors(issues, acks),
     coverage: coverageTable(input, draft),
     explanations: Object.fromEntries(issues.map((i) => [i.id, explainIssue(i, input)])),
+    podApprovals: approvals.map((a) => ({
+      podId: a.podId,
+      approvedBy: a.approvedBy,
+      note: a.note,
+      createdAt: a.createdAt.toISOString(),
+    })),
+    requirePodApprovals: podApprovalRequired(),
   };
 }
 
@@ -748,6 +765,29 @@ export async function editCells(
           ...(req.via ? { via: req.via } : {}),
         },
       });
+    }
+    // A pod's sign-off covers the cells as they were: editing any of its people clears it (P5.6).
+    const editedPods = new Set(
+      edits
+        .map((e) => input0.employees.find((x) => x.id === e.employeeId)?.podId)
+        .filter((id): id is string => id !== undefined),
+    );
+    const stale = await tx.podApproval.findMany({
+      where: { rosterId: roster.id, podId: { in: [...editedPods] } },
+    });
+    if (stale.length > 0) {
+      await tx.podApproval.deleteMany({ where: { id: { in: stale.map((a) => a.id) } } });
+      for (const a of stale) {
+        await writeAudit(tx, {
+          actor: req.actor,
+          action: "REVOKE_POD_APPROVAL",
+          entity: "PodApproval",
+          entityId: a.id,
+          rosterId: roster.id,
+          before: { approvedBy: a.approvedBy },
+          after: { reason: "a cell of this pod was edited" },
+        });
+      }
     }
   });
   return { committed: true, ...result };
@@ -1289,7 +1329,11 @@ export interface PublishResult {
 }
 
 /** Publish the latest draft. Blocked while any ERROR lacks an acknowledgement with a note. */
-export async function publishRoster(prisma: PrismaClient, raw: unknown): Promise<PublishResult> {
+export async function publishRoster(
+  prisma: PrismaClient,
+  raw: unknown,
+  opts: { requirePodApprovals?: boolean } = {},
+): Promise<PublishResult> {
   const { rosterId, actor } = parse(PublishInput, raw, "publish request");
   return prisma.$transaction(
     async (tx) => {
@@ -1317,6 +1361,24 @@ export async function publishRoster(prisma: PrismaClient, raw: unknown): Promise
             message: b.message,
           })),
         );
+      }
+      if (opts.requirePodApprovals ?? podApprovalRequired()) {
+        const [pods, approvals] = await Promise.all([
+          tx.pod.findMany({
+            orderBy: { name: "asc" },
+            include: { employees: { where: { isActive: true }, select: { id: true } } },
+          }),
+          tx.podApproval.findMany({ where: { rosterId } }),
+        ]);
+        const approved = new Set(approvals.map((a) => a.podId));
+        const missing = pods.filter((p) => p.employees.length > 0 && !approved.has(p.id));
+        if (missing.length > 0) {
+          throw new ServiceError(
+            "BLOCKED",
+            `${missing.length} pod(s) still need their lead's approval before publishing: ${missing.map((p) => p.name).join(", ")}.`,
+            missing.map((p) => ({ podId: p.id, pod: p.name })),
+          );
+        }
       }
       const earned = compOffEarnedFor(input, draft);
       const published = await tx.roster.update({
