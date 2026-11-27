@@ -267,4 +267,40 @@ is recorded here as soon as it is made.
     never the only signal; markers: a dot for an issue on that day, `p` for pending leave (not applied), a small
     dot for an edit by hand.
 
+## Optional features (P5)
+
+57. **Backup recommendations (P5.1)** come from `backupReport` (engine, pure). A brand-process is EXPOSED when it has no
+    BACKUP and no more primaries than the most it ever needs on one day (so one absence is a gap), SHARED when there
+    are more primaries than that, COVERED_BY_BACKUP when a backup exists. Candidates (EXPOSED or unstaffed only) are
+    active people not already on it, with spare allocation (100 minus the sum of their assignments), whose daily
+    span including this shift fits their daily hours, ranked same pod as the brand first, then least allocated, then
+    name. A new backup takes 20% (less if that is all they have spare). "Add as backup" creates an ordinary BACKUP
+    assignment, noted as such, which applies to the next generation or re-plan.
+58. **CSV export (P5.2)** is a read-only GET (`/roster/<month>/export?what=grid|coverage|issues|fairness&kind=&value=`) of
+    the latest version, built by the same view rules as the screen (it ignores the person-name search box). Cells that
+    start with `=`, `+`, `-`, `@`, a tab or a carriage return are prefixed with an apostrophe so a spreadsheet reads
+    them as text.
+59. **Fairness report (P5.3)** counts in-month days: Sundays that are not public holidays, and public holidays (a
+    holiday Sunday counts as a holiday). "Worked" means status WORK, so a backup-pool person who is rostered to work
+    but covers nothing still counts. The spread (max minus min) is taken only over people who could be asked: assigned
+    to a brand-process that operates on at least one such day. Everyone else is listed, labelled "no brand open", and
+    left out of the comparison, so closed-on-Sunday brands do not flatter the numbers. Holidays worked across everyone
+    equal the comp-off credits earned (tested).
+60. **Version comparison (P5.4)** diffs the cells of two versions of a month and validates BOTH with today's master data,
+    so it compares plans under the same rules. The consequence, tested and deliberate: after an applied change
+    (which also approved a leave), the older version reads "works while on approved leave" where it was saved with
+    "pending leave" warnings. It is not a record of what each version said on the day it was saved.
+61. **The AI explanation (P5.5)** sends only the issue's own fields (code, severity, date, message, the engine's
+    explanation, and each suggestion's type and description): no roster, no other people, no ids, no leave data, and
+    never the key. Without `ANTHROPIC_API_KEY`, on any error, a timeout (15 s) or an empty answer, the deterministic
+    explanation is returned and labelled "Standard explanation" with the reason. A per-process cap of 10 calls a
+    minute is a guard against a runaway client, **not** cost control: on a public deployment the real control is the
+    P6 passcode, which must also guard this action. The live API call is not exercised by the tests (they inject
+    `fetch`).
+62. **Pod-lead approval (P5.6)** is per pod, per DRAFT version, cleared when any of that pod's cells is edited, and absent
+    on a new version. Publishing requires every pod with an active employee only when `REQUIRE_POD_APPROVAL` is set
+    (off by default, so existing flows are unchanged). **There is no login, so the approver's name is recorded, not
+    verified**: the P6 passcode session supplies a display name from the server, and a check that it matches the pod
+    lead belongs there.
+
 _More assumptions are added per phase._

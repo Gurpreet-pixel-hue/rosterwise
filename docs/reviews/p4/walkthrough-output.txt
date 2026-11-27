@@ -31,10 +31,24 @@ $ tsx scripts/p4-walkthrough.ts
 30  screenshot 15-published.png
 31  PUBLISH: 13 errors acknowledged with notes, then published
 32  a published roster is read-only (the dialog says how to change it)
-33  screenshot 16-setup-brand-rules.png
-34  screenshot 17-setup-edit-brand-rule.png
-35  screenshot 18-setup-holidays-added.png
-36  setup CRUD: holiday added then deleted in the browser
+33  screenshot 24-p5-pod-approval.png
+34  P5.6: Alpha approved on the January draft; the tab reads Approval (1/4)
+35  screenshot 22-p5-version-comparison.png
+36  P5.4: versions 1 and 2 compared in both directions from the browser
+37  screenshot 21-p5-fairness.png
+38  P5.3: fairness page lists 32 people with spreads; its CSV has 33 lines
+39  P5.5: Explain returned a "deterministic" explanation: "STANDARD EXPLANATION Ananya Reddy has 0 of 1 required weekly off(s) in the week of 2026-11-30 to 2026-12-06. E..."
+40  screenshot 23-p5-explain.png
+41  CSV grid for Brand: Nimbus Gadgets -> 2 lines, header "Employee,Pod,2026-11-30 MON,2026-12-01 TUE,2026-12-02 WED,20..."
+42  CSV coverage for Brand: Nimbus Gadgets -> 3 lines, header "Brand,Process,Shift,2026-12-01 TUE,2026-12-02 WED,2026-12-03..."
+43  CSV issues for Brand: Nimbus Gadgets -> 13 lines, header "Severity,Code,Date,Employee,Brand / process,Message,Acknowle..."
+44  screenshot 19-p5-backup-recommendations.png
+45  P5.1: Nimbus CS was exposed; added Rohan Mehta as a backup in one click and it now reads "Has backup"
+46  screenshot 20-p5-backup-added.png
+47  screenshot 16-setup-brand-rules.png
+48  screenshot 17-setup-edit-brand-rule.png
+49  screenshot 18-setup-holidays-added.png
+50  setup CRUD: holiday added then deleted in the browser
 
 browser errors: 0
 WALKTHROUGH OK
