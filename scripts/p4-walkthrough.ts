@@ -14,7 +14,7 @@ import { mkdirSync } from "node:fs";
 import { chromium, type Locator, type Page } from "playwright-core";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
-const OUT = "docs/reviews/p4";
+const OUT = process.env.WALKTHROUGH_OUT ?? "docs/reviews/p4";
 const CHROME =
   process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 mkdirSync(OUT, { recursive: true });
@@ -66,7 +66,7 @@ async function main() {
   );
   check((await page.locator("tbody tr th[scope=row]").count()) >= 0, "locked: the page renders");
   await page.getByRole("button", { name: "Generate December 2026" }).click();
-  await page.waitForFunction(() => /Locked/i.test(document.body.innerText));
+  await page.waitForFunction(() => /Locked/i.test(document.body?.innerText ?? ""));
   check((await page.getByTestId("status-badge").count()) === 0, "locked: Generate wrote nothing");
   await shot(page, "p6-01-locked-refuses-generate");
   log("locked: the view loads, Generate is refused with a clear message and nothing is created");
@@ -299,9 +299,9 @@ async function main() {
   const approve = page.getByRole("button", { name: "I approve, apply" });
   if (await approve.count()) await approve.first().click();
   await notice(page).waitFor();
-  await page.waitForFunction(() => /Applied:/.test(document.body.innerText));
+  await page.waitForFunction(() => /Applied:/.test(document.body?.innerText ?? ""));
   // wait for router.refresh() to bring the new roster: the header summary must change
-  await page.waitForFunction((b) => !document.body.innerText.includes(b.trim()), before);
+  await page.waitForFunction((b) => !(document.body?.innerText ?? "").includes(b.trim()), before);
   const after = await page
     .getByText(/errors,/)
     .first()
@@ -327,7 +327,7 @@ async function main() {
     "nothing saved yet: still W",
   );
   await dlg.getByRole("button", { name: /Save anyway/ }).click();
-  await page.waitForFunction(() => /Saved Ishita/.test(document.body.innerText));
+  await page.waitForFunction(() => /Saved Ishita/.test(document.body?.innerText ?? ""));
   await page.waitForFunction(
     () =>
       document.querySelector('[data-cell="emp-ishita-verma|2026-12-16"]')?.textContent?.trim() ===
@@ -406,7 +406,7 @@ async function main() {
     "no pod is approved on a new version",
   );
   await page.getByRole("button", { name: "Approve Alpha" }).click();
-  await page.waitForFunction(() => /Approved by Walkthrough/.test(document.body.innerText));
+  await page.waitForFunction(() => /Approved by Walkthrough/.test(document.body?.innerText ?? ""));
   check(
     (await page.getByRole("tab", { name: "Approval (1/4)" }).count()) === 1,
     "one pod approved",
@@ -432,7 +432,7 @@ async function main() {
   await page.getByLabel("Later version").selectOption("1");
   await page.getByRole("button", { name: "Compare" }).click();
   await page.waitForFunction(() =>
-    /Version 1 compared with version 2/.test(document.body.innerText),
+    /Version 1 compared with version 2/.test(document.body?.innerText ?? ""),
   );
   log("P5.4: versions 1 and 2 compared in both directions from the browser");
 
@@ -516,7 +516,7 @@ async function main() {
   await shot(page, "19-p5-backup-recommendations");
   await addBtn.click();
   await page.waitForFunction(() =>
-    /as a backup \(\d+%\) for Nimbus Gadgets \/ CS/.test(document.body.innerText),
+    /as a backup \(\d+%\) for Nimbus Gadgets \/ CS/.test(document.body?.innerText ?? ""),
   );
   await page.waitForFunction(() =>
     document
@@ -549,7 +549,7 @@ async function main() {
     .getByRole("button", { name: "Delete holiday" })
     .click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await page.waitForFunction(() => !document.body.innerText.includes("Walkthrough Day"));
+  await page.waitForFunction(() => !(document.body?.innerText ?? "").includes("Walkthrough Day"));
   log("setup CRUD: holiday added then deleted in the browser");
   await go(page, `${BASE}/setup/assignments`);
   check((await page.locator("tbody tr").count()) >= 61, "assignments listed (61 seeded)");

@@ -1,0 +1,59 @@
+$ tsx scripts/p4-walkthrough.ts
+01  screenshot p6-01-locked-refuses-generate.png
+02  locked: the view loads, Generate is refused with a clear message and nothing is created
+03  screenshot p6-03-wrong-passcode.png
+04  screenshot p6-02-unlocked.png
+05  wrong passcode refused; the right one unlocks and the nav shows who is editing
+06  screenshot 01-december-generated.png
+07  December generated: version 1, DRAFT
+08  Pod view: Alpha -> 20 rows (company has 66)
+09  Brand view: Coastal Candles -> 4 rows (company has 66)
+10  Process view: CS -> 49 rows (company has 66)
+11  screenshot 02-view-process-cs.png
+12  Employee view: Aarav Sharma -> 5 rows (company has 66)
+13  screenshot 02-view-employee-aarav.png
+14  screenshot 03-scenario1-coastal-with-backup-clean.png
+15  SCENARIO 1: Coastal Candles (Ishita, backup Divya): 0 short days
+16  screenshot 04-scenario2-nimbus-no-backup-conflict.png
+17  SCENARIO 2: Nimbus Gadgets: 5 WEEKLY_OFF_NOT_GRANTED for Ananya, with explanation and a jump to her cell
+18  screenshot 12-boundary-carried-off-warning-and-neighbour-impact.png
+19  BOUNDARY: Aarav's 3 Jan off warns about December, and the preview shows the new December ERROR
+20  screenshot 13-boundary-foreign-cell-read-only.png
+21  BOUNDARY: 29 Dec in the January roster is read-only with a link to December
+22  screenshot 05-scenario3-orbit-one-leave-absorbed.png
+23  screenshot 06-scenario3-second-leave-preview.png
+24  SCENARIO 3: a second simultaneous leave (Pooja, 17 Dec) previews COVERAGE_GAP 'has 1 of 2'; nothing saved
+25  screenshot 07-scenario4-approve-pending-leave-preview.png
+26  screenshot 08-scenario4-applied-version-diff.png
+27  SCENARIO 4: Aarav's pending leave approved -> version 2 (draft) with a diff against version 1
+28  screenshot 09-scenario4-roster-v2-with-cascade.png
+29  screenshot 10-suggestion-applied.png
+30  one-click suggestion applied through validation: "13 errors, 10 warnings" -> "12 errors, 10 warnings, 1 edited by hand"
+31  screenshot 11-cell-edit-delta-before-saving.png
+32  cell edit: delta shown before saving, then saved (Ishita off on 16 Dec opens two Coastal gaps)
+33  ... and the USE_BACKUP suggestion fixes it in one click
+34  screenshot 14-publish-blocked-by-errors.png
+35  screenshot 15-published.png
+36  PUBLISH: 13 errors acknowledged with notes, then published
+37  a published roster is read-only (the dialog says how to change it)
+38  screenshot 24-p5-pod-approval.png
+39  P5.6: Alpha approved on the January draft; the tab reads Approval (1/4)
+40  screenshot 22-p5-version-comparison.png
+41  P5.4: versions 1 and 2 compared in both directions from the browser
+42  screenshot 21-p5-fairness.png
+43  P5.3: fairness page lists 32 people with spreads; its CSV has 33 lines
+44  P5.5: Explain returned a "deterministic" explanation: "STANDARD EXPLANATION Ananya Reddy has 0 of 1 required weekly off(s) in the week of 2026-11-30 to 2026-12-06. E..."
+45  screenshot 23-p5-explain.png
+46  CSV grid for Brand: Nimbus Gadgets -> 2 lines, header "Employee,Pod,2026-11-30 MON,2026-12-01 TUE,2026-12-02 WED,20..."
+47  CSV coverage for Brand: Nimbus Gadgets -> 3 lines, header "Brand,Process,Shift,2026-12-01 TUE,2026-12-02 WED,2026-12-03..."
+48  CSV issues for Brand: Nimbus Gadgets -> 13 lines, header "Severity,Code,Date,Employee,Brand / process,Message,Acknowle..."
+49  screenshot 19-p5-backup-recommendations.png
+50  P5.1: Nimbus CS was exposed; added Rohan Mehta as a backup in one click and it now reads "Has backup"
+51  screenshot 20-p5-backup-added.png
+52  screenshot 16-setup-brand-rules.png
+53  screenshot 17-setup-edit-brand-rule.png
+54  screenshot 18-setup-holidays-added.png
+55  setup CRUD: holiday added then deleted in the browser
+
+browser errors: 0
+WALKTHROUGH OK
