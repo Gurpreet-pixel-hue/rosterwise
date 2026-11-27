@@ -52,20 +52,27 @@ export async function attemptUnlock(db: PrismaClient, req: UnlockRequest): Promi
   const hash = ipHash(req.ip, cfg.secret);
 
   await db.unlockAttempt.deleteMany({ where: { createdAt: { lt: since } } });
-  const failures = await db.unlockAttempt.count({
+
+  // Record the attempt BEFORE looking at the count or the passcode. Checking first and recording after lets
+  // N parallel requests all read "0 failures" and all get compared. With insert-then-count, a request that
+  // passes the gate saw its own row and the row of every other passer (each inserted before it counted), so at
+  // most MAX_FAILED_ATTEMPTS passcodes are ever compared per window, however many requests arrive at once.
+  const attempt = await db.unlockAttempt.create({ data: { ipHash: hash, createdAt: now } });
+  const attempts = await db.unlockAttempt.count({
     where: { ipHash: hash, createdAt: { gte: since } },
   });
-  if (failures >= MAX_FAILED_ATTEMPTS)
+  if (attempts > MAX_FAILED_ATTEMPTS) {
+    // Refused without a comparison: leave no trace, so hammering does not keep sliding the window.
+    await db.unlockAttempt.deleteMany({ where: { id: attempt.id } });
     return {
       ok: false,
       status: 429,
       message: "Too many wrong passcodes. Try again in 15 minutes.",
     };
-
-  if (!passcodeMatches(req.passcode, cfg.passcode)) {
-    await db.unlockAttempt.create({ data: { ipHash: hash, createdAt: now } });
-    return { ok: false, status: 401, message: "That passcode is not right." };
   }
+
+  if (!passcodeMatches(req.passcode, cfg.passcode))
+    return { ok: false, status: 401, message: "That passcode is not right." };
 
   await db.unlockAttempt.deleteMany({ where: { ipHash: hash } });
   const expiresAt = now.getTime() + SESSION_TTL_MS;

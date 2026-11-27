@@ -66,6 +66,20 @@ describe.skipIf(!HAS_DB)("attemptUnlock", () => {
     expect(await tryUnlock({ now: later })).toMatchObject({ ok: true });
   });
 
+  it("holds the limit under concurrency: parallel wrong guesses never get more than 5 comparisons", async () => {
+    // The old check-then-record order let every parallel request read "0 failures" and be compared.
+    const results = await Promise.all(
+      Array.from({ length: 30 }, (_, i) => tryUnlock({ passcode: `guess${i}` })),
+    );
+    const compared = results.filter((r) => !r.ok && r.status === 401).length;
+    const blocked = results.filter((r) => !r.ok && r.status === 429).length;
+    expect(compared).toBeLessThanOrEqual(MAX_FAILED_ATTEMPTS);
+    expect(compared + blocked).toBe(30);
+    expect(results.some((r) => r.ok)).toBe(false);
+    // Blocked requests leave no trace, so the window does not slide while someone hammers it.
+    expect(await prisma().unlockAttempt.count()).toBe(compared);
+  });
+
   it("keeps the counters per IP", async () => {
     for (let i = 0; i < MAX_FAILED_ATTEMPTS; i++)
       await tryUnlock({ passcode: "guess", ip: "198.51.100.1" });
