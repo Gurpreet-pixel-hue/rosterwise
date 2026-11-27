@@ -112,4 +112,50 @@ describe("candidate filters", () => {
         .candidates.some((c) => c.employeeId === first.employeeId),
     ).toBe(false);
   });
+
+  it("ranks a same-pod candidate before another pod's, even when the other pod's person is less loaded", () => {
+    const base = seedInput("2026-12");
+    const nimbus = base.brandProcesses.find(
+      (b) => b.brandName === "Nimbus Gadgets" && b.processCode === "CS",
+    )!;
+    const normal = backupReport(base, 50).find((r) => r.brandProcessId === nimbus.id)!;
+    const samePod = normal.candidates.filter((c) => c.samePod);
+    const other = normal.candidates.filter((c) => !c.samePod);
+    expect(samePod.length).toBeGreaterThan(0);
+    expect(other.length).toBeGreaterThan(0);
+    // make every same-pod candidate carry more allocation than the least-loaded other-pod candidate
+    const least = Math.min(...other.map((c) => c.loadPct));
+    const filler = base.brandProcesses.find((b) => b.id !== nimbus.id)!;
+    const heavier = {
+      ...base,
+      assignments: [
+        ...base.assignments,
+        ...samePod
+          .filter((c) => c.loadPct <= least)
+          .map((c) => ({
+            employeeId: c.employeeId,
+            brandProcessId: filler.id,
+            role: "BACKUP" as const,
+            allocationPct: Math.min(95 - c.loadPct, 100),
+          }))
+          .filter(
+            (a) =>
+              a.allocationPct > 0 &&
+              !base.assignments.some(
+                (x) => x.employeeId === a.employeeId && x.brandProcessId === a.brandProcessId,
+              ),
+          ),
+      ],
+    };
+    const r = backupReport(heavier, 50).find((x) => x.brandProcessId === nimbus.id)!;
+    const firstOther = r.candidates.findIndex((c) => !c.samePod);
+    const lastSame = r.candidates.map((c) => c.samePod).lastIndexOf(true);
+    expect(lastSame).toBeGreaterThanOrEqual(0);
+    expect(lastSame).toBeLessThan(firstOther); // every same-pod candidate comes first
+    const lightestOther = r.candidates
+      .filter((c) => !c.samePod)
+      .reduce((m, c) => Math.min(m, c.loadPct), 100);
+    const heaviestSame = Math.max(...r.candidates.filter((c) => c.samePod).map((c) => c.loadPct));
+    expect(heaviestSame).toBeGreaterThan(lightestOther); // and that ordering really was a pod decision, not load
+  });
 });
