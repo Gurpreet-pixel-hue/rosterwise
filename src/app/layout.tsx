@@ -1,19 +1,58 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { AppNav } from "@/components/app-nav";
 import { currentSession } from "@/server/auth/guard";
 
-const plexSans = IBM_Plex_Sans({
-  weight: ["400", "500", "600", "700"],
+// Self-hosted (npm @fontsource packages), so the build never depends on fetching Google Fonts.
+// next/font/local needs literal values, hence the written-out list.
+const plexSans = localFont({
+  src: [
+    {
+      path: "../../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-400-normal.woff2",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "../../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-500-normal.woff2",
+      weight: "500",
+      style: "normal",
+    },
+    {
+      path: "../../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-600-normal.woff2",
+      weight: "600",
+      style: "normal",
+    },
+    {
+      path: "../../node_modules/@fontsource/ibm-plex-sans/files/ibm-plex-sans-latin-700-normal.woff2",
+      weight: "700",
+      style: "normal",
+    },
+  ],
   variable: "--font-plex-sans",
-  subsets: ["latin"],
+  display: "swap",
 });
 
-const plexMono = IBM_Plex_Mono({
-  weight: ["400", "500", "600"],
+const plexMono = localFont({
+  src: [
+    {
+      path: "../../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "../../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2",
+      weight: "500",
+      style: "normal",
+    },
+    {
+      path: "../../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-600-normal.woff2",
+      weight: "600",
+      style: "normal",
+    },
+  ],
   variable: "--font-plex-mono",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
