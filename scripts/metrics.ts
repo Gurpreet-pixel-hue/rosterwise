@@ -9,6 +9,7 @@ import { cpus, tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildSeedData, type SeedSnapshot } from "../prisma/seed-data";
 import { coverageTable } from "../src/engine/coverage";
+import { fairnessReport } from "../src/engine/fairness";
 import { generateRoster } from "../src/engine/generate";
 import { ISSUE_SEVERITY, type EngineInput, type Issue, type IssueCode } from "../src/engine/types";
 import { buildEngineInput, type EngineRows } from "../src/server/buildEngineInput";
@@ -227,6 +228,32 @@ function main() {
   };
   const withoutBackups = demandCoverage(noBackupRows);
 
+  // --- weekly-off fairness, as the app produces it on a fresh database
+  const decIn = buildEngineInput(rows, "2026-12");
+  const decDraft = generateRoster(decIn, { suggestions: false }).draft;
+  const janIn = buildEngineInput(rows, "2027-01", {
+    neighbourRosters: [{ month: "2026-12", status: "DRAFT", entries: decDraft.entries }],
+  });
+  const janDraft = generateRoster(janIn, { suggestions: false }).draft;
+  const fairness = (
+    [
+      ["2026-12", decIn, decDraft],
+      ["2027-01", janIn, janDraft],
+    ] as const
+  ).map(([month, input, draft]) => {
+    const r = fairnessReport(input, draft);
+    const el = r.rows.filter((x) => x.sundayEligible);
+    return {
+      month,
+      sundays: r.sundays,
+      eligible: el.length,
+      noSundayOff: el.filter((x) => x.weeklyOffsOnSunday === 0).length,
+      workedEvery: el.filter((x) => x.sundaysWorked === r.sundays).length,
+      min: r.sundaySpread.min,
+      max: r.sundaySpread.max,
+    };
+  });
+
   // --- issue codes
   const allCodes = Object.keys(ISSUE_SEVERITY) as IssueCode[];
   const observed = new Set(withBackups.issues.map((i) => i.code));
@@ -359,6 +386,25 @@ function main() {
   add();
   add(
     `Removing the backups leaves ${withBackups.covered - withoutBackups.covered} more demand-days short and raises the ERROR count from ${withBackups.errors} to ${withoutBackups.errors}.`,
+  );
+  add();
+  add("## Weekly-off fairness (a known weakness)");
+  add();
+  add(
+    "Generated the way the live app does on a fresh database: December first, then January with the December draft as its neighbour. Eligible = assigned to a brand-process that operates on at least one non-holiday Sunday of the month.",
+  );
+  add();
+  add(
+    "| Month | Sundays | Eligible people | No weekly off on a Sunday | Worked every Sunday | Sundays worked, min to max |",
+  );
+  add("|---|---|---|---|---|---|");
+  for (const f of fairness)
+    add(
+      `| ${f.month} | ${f.sundays} | ${f.eligible} | ${f.noSundayOff} (${pct(f.noSundayOff, f.eligible)}) | ${f.workedEvery} | ${f.min} to ${f.max} |`,
+    );
+  add();
+  add(
+    "Most weekly offs land on weekdays, where coverage is easiest to keep. The engine does not yet spread Sundays evenly. The fairness report page shows the same numbers per person.",
   );
   add();
   add("## Issue codes");
