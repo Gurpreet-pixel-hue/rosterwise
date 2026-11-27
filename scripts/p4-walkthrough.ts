@@ -4,6 +4,10 @@
 //   pnpm db:seed && pnpm build && pnpm start   # in one terminal (fresh seed: no rosters yet)
 //   pnpm walkthrough:p4                        # in another (BASE_URL overrides http://localhost:3000)
 //
+// Writes need the shared passcode (P6). Start the server with DEMO_PASSCODE and SESSION_SECRET set and give the
+// walkthrough the same passcode: WALKTHROUGH_PASSCODE=... pnpm walkthrough:p4. It first checks that a locked
+// session can read but not write, then unlocks.
+//
 // Run it against the PRODUCTION build, not `pnpm dev`: next dev can throw a dev-only
 // "clientReferenceManifest" 500 on a cold compile of a page, which is not an app bug.
 import { mkdirSync } from "node:fs";
@@ -45,6 +49,55 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1700, height: 1000 } });
   page.on("console", (m) => m.type() === "error" && errors.push(`console: ${m.text()}`));
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+
+  // ---- P6: locked means view-only, then unlock --------------------------------------------------
+  const passcode = process.env.WALKTHROUGH_PASSCODE;
+  check(passcode, "set WALKTHROUGH_PASSCODE to the server's DEMO_PASSCODE");
+  const lockedPage = await page.goto(`${BASE}/roster/2026-12`);
+  await settle(page);
+  const hdr = lockedPage!.headers();
+  check(hdr["x-frame-options"] === "DENY", "X-Frame-Options: DENY");
+  check(hdr["content-security-policy"]?.includes("frame-ancestors 'none'"), "CSP is sent");
+  check(hdr["x-content-type-options"] === "nosniff", "nosniff is sent");
+  check(!hdr["x-powered-by"], "x-powered-by is not sent");
+  check(
+    (await page.locator('[data-session="locked"]').innerText()).includes("View only"),
+    "locked: the nav says View only",
+  );
+  check((await page.locator("tbody tr th[scope=row]").count()) >= 0, "locked: the page renders");
+  await page.getByRole("button", { name: "Generate December 2026" }).click();
+  await page.waitForFunction(() => /Locked/i.test(document.body.innerText));
+  check((await page.getByTestId("status-badge").count()) === 0, "locked: Generate wrote nothing");
+  await shot(page, "p6-01-locked-refuses-generate");
+  log("locked: the view loads, Generate is refused with a clear message and nothing is created");
+
+  await go(page, `${BASE}/unlock`);
+  await page.getByLabel("Your name").fill("Walkthrough");
+  await page.getByLabel("Passcode").fill("definitely-wrong");
+  const errorsBeforeWrongPasscode = errors.length;
+  await page.getByRole("button", { name: "Unlock" }).click();
+  // Scoped to the form: Next also renders an empty role="alert" route announcer.
+  const unlockError = page.locator('form[aria-label="Unlock editing"] [role="alert"]');
+  await unlockError.waitFor();
+  check(/not right/i.test(await unlockError.innerText()), "a wrong passcode is refused");
+  // The browser logs the deliberate 401 as a console error. Drop exactly that one entry, nothing else.
+  const expected401 = errors.findIndex(
+    (e, i) => i >= errorsBeforeWrongPasscode && /status of 401/.test(e),
+  );
+  check(expected401 >= 0, "the wrong passcode was answered with a 401");
+  errors.splice(expected401, 1);
+  await shot(page, "p6-03-wrong-passcode");
+  await page.getByLabel("Passcode").fill(passcode);
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.waitForURL(/\/roster/);
+  await settle(page);
+  await page.locator('[data-session="unlocked"]').waitFor();
+  check(
+    (await page.locator('[data-session="unlocked"]').innerText()).includes("Walkthrough"),
+    "unlocked: the nav names the session",
+  );
+  await shot(page, "p6-02-unlocked");
+  log("wrong passcode refused; the right one unlocks and the nav shows who is editing");
 
   // ---- generate December -------------------------------------------------------------------
   await go(page, `${BASE}/roster/2026-12`);
@@ -353,7 +406,7 @@ async function main() {
     "no pod is approved on a new version",
   );
   await page.getByRole("button", { name: "Approve Alpha" }).click();
-  await page.waitForFunction(() => /Approved by manager/.test(document.body.innerText));
+  await page.waitForFunction(() => /Approved by Walkthrough/.test(document.body.innerText));
   check(
     (await page.getByRole("tab", { name: "Approval (1/4)" }).count()) === 1,
     "one pod approved",

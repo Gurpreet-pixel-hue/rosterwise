@@ -20,6 +20,7 @@ export async function seedDatabase(prisma: PrismaClient): Promise<SeedCounts> {
   await prisma.$transaction(
     async (tx) => {
       // Clear, children first.
+      await tx.unlockAttempt.deleteMany(); // also lifts a brute-force lockout (pnpm db:reset-demo)
       await tx.auditLog.deleteMany();
       await tx.issueAck.deleteMany();
       await tx.rosterEntry.deleteMany();

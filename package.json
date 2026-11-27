@@ -14,6 +14,7 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "db:reset-demo": "tsx prisma/seed.ts",
     "verify:seed": "tsx scripts/verify-seed.ts",
     "roster:dry-run": "tsx scripts/roster-dry-run.ts",
     "walkthrough:p4": "tsx scripts/p4-walkthrough.ts"
