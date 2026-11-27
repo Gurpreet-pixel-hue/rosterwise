@@ -152,6 +152,8 @@ model Assignment {
   brandProcess   BrandProcess   @relation(fields: [brandProcessId], references: [id], onDelete: Cascade)
   role           AssignmentRole
   allocationPct  Int            @default(100)
+  // Where it came from when it was not entered by hand, e.g. "Added from roster 2026-12 v1 (borrow from pod)".
+  note           String?
 
   @@unique([employeeId, brandProcessId])
   @@index([brandProcessId, role])

@@ -594,6 +594,7 @@ export async function editCells(
           brandProcessId: a.brandProcessId,
           role: a.role,
           allocationPct: a.allocationPct,
+          note: `Added from roster ${roster.month} v${fresh.version} (${req.via ?? "roster edit"}). Remove it here if it is no longer needed.`,
         },
         update: {},
       });

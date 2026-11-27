@@ -44,6 +44,10 @@ import { RosterGrid } from "./roster-grid";
 import { Legend } from "./status-style";
 import { WhoWorking } from "./who-working";
 
+/** Issues that need a person's attention: ERROR and WARNING. INFO (comp-off notes) is not counted. */
+const reviewCount = (issues: ReadonlyArray<{ severity: string }>) =>
+  issues.filter((i) => i.severity !== "INFO").length;
+
 export function RosterWorkbench({ data }: { data: RosterPageData }) {
   const router = useRouter();
   const { month, refs, view } = data;
@@ -262,12 +266,14 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
                 disabled={busy !== null}
                 onClick={() => setConfirmRegen(true)}
               >
-                Regenerate
+                {view.roster.status === "PUBLISHED" ? "Regenerate as new draft" : "Regenerate"}
               </Button>
             )}
             {view && confirmRegen && (
               <span className="flex items-center gap-1.5 rounded-md border border-border bg-muted/70 p-1 pl-2.5 text-xs">
-                New version {view.roster.version + 1}; keeps {manualCount} manual edit(s).
+                {view.roster.status === "PUBLISHED"
+                  ? `Creates draft version ${view.roster.version + 1}; published version ${view.roster.version} stays in history.`
+                  : `New version ${view.roster.version + 1}; keeps ${manualCount} manual edit(s).`}
                 <Button size="xs" onClick={generate} disabled={busy !== null}>
                   Regenerate
                 </Button>
@@ -454,10 +460,7 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
                 >
                   {(
                     [
-                      [
-                        "issues",
-                        `Issues (${shownIssues.filter((i) => i.severity !== "INFO").length})`,
-                      ],
+                      ["issues", `Issues (${reviewCount(shownIssues)})`],
                       ["day", "Who's working"],
                     ] as const
                   ).map(([id, label]) => (
@@ -487,16 +490,24 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
                         onCheckedChange={(c) => setOnlyView(Boolean(c))}
                       />
                       <span>
-                        Only issues in this view ({shownIssues.length} of {view.issues.length})
+                        Only issues in this view ({reviewCount(shownIssues)} of{" "}
+                        {reviewCount(view.issues)} to review)
                       </span>
                     </label>
                   )}
                   {side === "issues" ? (
                     <IssuesPanel
                       issues={shownIssues}
+                      names={{
+                        employee: (id) => refs.employees.find((e) => e.id === id)?.name ?? id,
+                        bp: (id) => {
+                          const b = refs.brandProcesses.find((x) => x.id === id);
+                          return b ? `${b.brandName} / ${b.processCode}` : id;
+                        },
+                      }}
                       emptyText={
                         scoped
-                          ? `No issues in this view (${view.issues.length - shownIssues.length} elsewhere in the roster).`
+                          ? `No issues in this view (${reviewCount(view.issues) - reviewCount(shownIssues)} to review elsewhere in the roster).`
                           : "No issues. This roster is valid."
                       }
                       explanations={view.explanations}

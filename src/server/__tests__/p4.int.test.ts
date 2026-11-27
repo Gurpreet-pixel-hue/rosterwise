@@ -242,6 +242,12 @@ describe.skipIf(!HAS_DB)("what the P4 UI relies on (integration, real Postgres)"
         { commit: true },
       );
       expect(done.assignmentsCreated).toBeGreaterThan(0);
+      const created = await prisma().assignment.findFirstOrThrow({
+        where: { employeeId: RAHUL, brandProcessId: COASTAL_CS },
+      });
+      expect(created.role).toBe("BACKUP");
+      expect(created.note).toContain("Added from roster 2026-12 v1");
+      expect(created.note).toContain("suggestion REASSIGN_FROM_POD");
       expect(
         await prisma().assignment.count({
           where: { employeeId: RAHUL, brandProcessId: COASTAL_CS },

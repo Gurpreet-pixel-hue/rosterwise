@@ -40,6 +40,7 @@ const SUGGESTION_LABEL: Record<Suggestion["type"], string> = {
 
 export function IssuesPanel({
   issues,
+  names,
   emptyText,
   explanations,
   rosterId,
@@ -49,6 +50,8 @@ export function IssuesPanel({
   onDone,
 }: {
   issues: IssueWithAck[];
+  /** Readable names for ids in the approval text. */
+  names?: { employee: (id: string) => string; bp: (id: string) => string };
   emptyText: string;
   explanations: Record<string, string>;
   rosterId: string;
@@ -298,15 +301,16 @@ export function IssuesPanel({
                                     {confirming === `${issue.id}:${i}` && (
                                       <div className="mt-2 space-y-2 rounded-[4px] border border-[#FDE68A] bg-[#FFFBEB] p-2 text-xs text-[#854D0E]">
                                         <p>
-                                          This needs a manager-approved temporary assignment:{" "}
+                                          This adds a <strong>permanent</strong> assignment:{" "}
                                           {s
                                             .temporaryAssignments!.map(
                                               (a) =>
-                                                `${a.role.toLowerCase()} on ${a.brandProcessId.replace(/^bp-/, "")}`,
+                                                `${names?.employee(a.employeeId) ?? a.employeeId} as ${a.role.toLowerCase()} on ${names?.bp(a.brandProcessId) ?? a.brandProcessId} (${a.allocationPct}%)`,
                                             )
-                                            .join(", ")}
-                                          . It is added to Setup, Assignments and stays until you
-                                          remove it.
+                                            .join("; ")}
+                                          . It stays after this roster and changes future months
+                                          until you remove it in Setup, Assignments (the row is
+                                          noted &ldquo;Added from roster...&rdquo;).
                                         </p>
                                         <div className="flex gap-1.5">
                                           <Button

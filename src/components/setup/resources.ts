@@ -253,6 +253,7 @@ export const RESOURCE_DEFS: ResourceDef[] = [
       { label: "Brand / process", value: lookup("brandProcess", "brandProcessId") },
       { label: "Role", value: text("role") },
       { label: "Allocation", value: (r) => `${r.allocationPct}%` },
+      { label: "Note", value: (r) => String(r.note ?? "") },
     ],
     fields: [
       { name: "employeeId", label: "Employee", type: "ref", ref: "employee" },

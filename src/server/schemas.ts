@@ -105,6 +105,7 @@ export const AssignmentInput = z.object({
   brandProcessId: id,
   role: z.enum(["PRIMARY", "BACKUP"]),
   allocationPct: z.number().int().min(1).max(100).default(100),
+  note: z.string().trim().max(300).nullish(),
 });
 
 export const HolidayInput = z.object({ date: DateString, name });
