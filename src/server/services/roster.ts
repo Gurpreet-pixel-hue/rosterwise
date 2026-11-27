@@ -12,6 +12,7 @@
 import { Prisma, type PrismaClient, type Roster } from "@prisma/client";
 import type { z } from "zod";
 import { analyzeRoster, compOffEarnedFor } from "../../engine/analyze";
+import { addDays, weekdayOf } from "../../engine/calendar";
 import { applyEdits } from "../../engine/edit";
 import { fairnessReport, type FairnessReport } from "../../engine/fairness";
 import { coverageTable, type CoverageTable } from "../../engine/coverage";
@@ -37,6 +38,7 @@ import {
   AckInput,
   ApplyChangeInput,
   ApplySuggestionInput,
+  CompareVersionsInput,
   EntryStatusSchema,
   GenerateInput,
   ManualEditInput,
@@ -285,6 +287,63 @@ export async function fairnessForRoster(
     loadDraft(prisma, roster),
   ]);
   return fairnessReport(input, draft);
+}
+
+/** The Monday that starts the Mon-Sun week containing `date`. */
+const mondayOf = (date: string): string => {
+  const days = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const;
+  return addDays(date, -days.indexOf(weekdayOf(date)));
+};
+
+export interface VersionComparison {
+  month: string;
+  from: RosterSummary;
+  to: RosterSummary;
+  changedCells: CellChange[];
+  issueDelta: IssueDelta;
+  errorsBefore: number;
+  errorsAfter: number;
+  /** Mondays of the weeks that have at least one changed cell. */
+  replannedWeeks: string[];
+}
+
+/**
+ * What changed between two versions of a month (P5.4): the cells whose status or coverage differ, and the issues
+ * added or resolved. Both versions are read the way the roster page reads them (neighbour days overlaid) and
+ * validated against TODAY's master data, so the issue delta says what each version looks like now, not as it
+ * looked the day it was saved.
+ */
+export async function compareVersions(
+  prisma: PrismaClient,
+  raw: unknown,
+): Promise<VersionComparison> {
+  const { month, from, to } = parse(CompareVersionsInput, raw, "comparison");
+  const [a, b] = await Promise.all([
+    prisma.roster.findUnique({ where: { month_version: { month, version: from } } }),
+    prisma.roster.findUnique({ where: { month_version: { month, version: to } } }),
+  ]);
+  if (!a) throw new ServiceError("NOT_FOUND", `${month} has no version ${from}.`);
+  if (!b) throw new ServiceError("NOT_FOUND", `${month} has no version ${to}.`);
+  const [input, da, db_] = await Promise.all([
+    loadEngineInput(prisma, month),
+    loadDraft(prisma, a),
+    loadDraft(prisma, b),
+  ]);
+  const ia = validateRoster(input, da);
+  const ib = validateRoster(input, db_);
+  const d = diffRosters({ draft: da, issues: ia }, { draft: db_, issues: ib });
+  const weeks = new Set<string>();
+  for (const c of d.changedCells) weeks.add(mondayOf(c.date));
+  return {
+    month,
+    from: summarise(a),
+    to: summarise(b),
+    changedCells: d.changedCells,
+    issueDelta: d.issueDelta,
+    errorsBefore: ia.filter((i) => i.severity === "ERROR").length,
+    errorsAfter: ib.filter((i) => i.severity === "ERROR").length,
+    replannedWeeks: [...weeks].sort(),
+  };
 }
 
 export async function listRosterVersions(

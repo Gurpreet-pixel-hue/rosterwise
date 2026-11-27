@@ -167,6 +167,12 @@ export const ApplySuggestionInput = z.object({
   actor: actorSchema,
 });
 
+export const CompareVersionsInput = z.object({
+  month: MonthString,
+  from: z.number().int().min(1).max(10000),
+  to: z.number().int().min(1).max(10000),
+});
+
 export const ChangeInput = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("ADD_LEAVE"),

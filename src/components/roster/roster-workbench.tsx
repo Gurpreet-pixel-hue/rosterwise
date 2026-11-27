@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Download,
   GitCompare,
+  History,
   PanelRightClose,
   PanelRightOpen,
   Scale,
@@ -276,6 +277,14 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
                 className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
               >
                 <Scale className="size-3.5 text-muted-foreground" /> Fairness
+              </Link>
+            )}
+            {view && data.versions.length > 1 && (
+              <Link
+                href={`/roster/${month}/versions`}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                <History className="size-3.5 text-muted-foreground" /> Versions
               </Link>
             )}
             {view && !confirmRegen && (

@@ -4,7 +4,9 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Issue } from "../../engine/types";
 import { ServiceError } from "../errors";
 import {
+  applyRosterChange,
   applySuggestionToRoster,
+  compareVersions,
   editCells,
   fairnessForRoster,
   generateMonth,
@@ -133,6 +135,88 @@ describe.skipIf(!HAS_DB)("what the P4 UI relies on (integration, real Postgres)"
         page.backups.find((b) => b.brandName === "Coastal Candles" && b.processCode === "CS")
           ?.status,
       ).toBe("COVERED_BY_BACKUP");
+    });
+  });
+
+  describe("version comparison (P5.4)", () => {
+    const approveAarav = async () => {
+      const pending = await prisma().leave.findFirstOrThrow({ where: { status: "PENDING" } });
+      return {
+        type: "ADD_LEAVE" as const,
+        leave: {
+          id: pending.id,
+          employeeId: pending.employeeId,
+          fromDate: pending.fromDate,
+          toDate: pending.toDate,
+          type: pending.type,
+          status: "APPROVED" as const,
+        },
+      };
+    };
+
+    it("agrees exactly with what applying the change reported, and swaps when reversed", async () => {
+      const v1 = await gen(DEC);
+      const applied = await applyRosterChange(prisma(), {
+        rosterId: v1.roster.id,
+        change: await approveAarav(),
+        actor: "tester",
+      });
+      expect(applied.roster.version).toBe(2);
+
+      const cmp = await compareVersions(prisma(), { month: DEC, from: 1, to: 2 });
+      const key = (c: { employeeId: string; date: string }) => `${c.employeeId}|${c.date}`;
+      expect(cmp.changedCells.map(key).sort()).toEqual(applied.changedCells.map(key).sort());
+      expect(cmp.changedCells.length).toBeGreaterThan(0);
+      expect(cmp.issueDelta.added.map((i) => i.id).sort()).toEqual(
+        applied.issueDelta.added.map((i) => i.id).sort(),
+      );
+      // Both versions are judged by TODAY's master data, and applying the change also approved Aarav's leave. So
+      // version 1 now reads as "Aarav works while on approved leave" (2 ERRORs) rather than the 2 pending-leave
+      // warnings it was saved with: the comparison says "version 2 resolves those", the apply said "resolved
+      // the warnings". Everything else is identical.
+      expect(applied.issueDelta.resolved.map((i) => i.code).sort()).toEqual([
+        "PENDING_LEAVE_CONFLICT",
+        "PENDING_LEAVE_CONFLICT",
+      ]);
+      expect(cmp.issueDelta.resolved.map((i) => i.code).sort()).toEqual([
+        "WORK_WHILE_UNAVAILABLE",
+        "WORK_WHILE_UNAVAILABLE",
+      ]);
+      expect(cmp.errorsBefore).toBe(applied.errorsBefore + 2);
+      expect(cmp.errorsAfter).toBe(applied.errorsAfter);
+      expect(cmp.replannedWeeks).toEqual(["2026-12-28"]);
+      expect(cmp.from.version).toBe(1);
+      expect(cmp.to.version).toBe(2);
+
+      // reversed: the same cells, swapped before and after; added and resolved swap
+      const back = await compareVersions(prisma(), { month: DEC, from: 2, to: 1 });
+      expect(back.changedCells.map(key).sort()).toEqual(cmp.changedCells.map(key).sort());
+      expect(back.issueDelta.added.map((i) => i.id).sort()).toEqual(
+        cmp.issueDelta.resolved.map((i) => i.id).sort(),
+      );
+      expect(back.issueDelta.resolved.map((i) => i.id).sort()).toEqual(
+        cmp.issueDelta.added.map((i) => i.id).sort(),
+      );
+      const one = cmp.changedCells[0];
+      const rev = back.changedCells.find((c) => key(c) === key(one))!;
+      expect(rev.before).toEqual(one.after);
+      expect(rev.after).toEqual(one.before);
+    });
+
+    it("a version compared with itself differs in nothing; an unknown version is NOT_FOUND; nothing is written", async () => {
+      await gen(DEC);
+      const before = await counts();
+      const same = await compareVersions(prisma(), { month: DEC, from: 1, to: 1 });
+      expect(same.changedCells).toEqual([]);
+      expect(same.issueDelta).toEqual({ added: [], resolved: [] });
+      expect(same.errorsBefore).toBe(same.errorsAfter);
+      expect((await failure(compareVersions(prisma(), { month: DEC, from: 1, to: 9 }))).code).toBe(
+        "NOT_FOUND",
+      );
+      expect(
+        (await failure(compareVersions(prisma(), { month: "bad", from: 1, to: 1 }))).code,
+      ).toBe("VALIDATION");
+      expect(await counts()).toEqual(before);
     });
   });
 

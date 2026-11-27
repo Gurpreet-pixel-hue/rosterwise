@@ -345,6 +345,28 @@ async function main() {
   log("a published roster is read-only (the dialog says how to change it)");
   await page.keyboard.press("Escape");
 
+  // ---- P5.4 version comparison ------------------------------------------------------------------
+  await go(page, `${BASE}/roster/2026-12/versions`);
+  const cmp = page.getByTestId("version-comparison");
+  await cmp.waitFor();
+  const cmpText = await cmp.innerText();
+  check(
+    /Version 2 compared with version 1/.test(cmpText),
+    "the page compares the latest two versions by default",
+  );
+  check(
+    /Cells changed/.test(cmpText) && /Issues added/.test(cmpText),
+    "the comparison shows cells and issues",
+  );
+  await shot(page, "22-p5-version-comparison");
+  await page.getByLabel("Earlier version").selectOption("2");
+  await page.getByLabel("Later version").selectOption("1");
+  await page.getByRole("button", { name: "Compare" }).click();
+  await page.waitForFunction(() =>
+    /Version 1 compared with version 2/.test(document.body.innerText),
+  );
+  log("P5.4: versions 1 and 2 compared in both directions from the browser");
+
   // ---- P5.3 fairness report ------------------------------------------------------------------
   await go(page, `${BASE}/roster/2026-12/fairness`);
   const summary = await page.getByTestId("fairness-summary").innerText();
