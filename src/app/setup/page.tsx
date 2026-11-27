@@ -19,8 +19,9 @@ export default async function SetupHome() {
         <p className="max-w-2xl text-sm text-muted-foreground">
           Everything the scheduling engine uses is data you can change here: who works where, what
           each brand needs and when it operates, holidays, and leave. Nothing is hard-coded. A
-          change applies to the next roster you generate or re-plan; saved rosters are never
-          rewritten under you.
+          change applies to the next roster you generate or re-plan. Saved cells are never rewritten
+          under you, but an existing roster&apos;s issues and suggestions are re-checked against the
+          new data.
         </p>
       </div>
       <div className="overflow-x-auto rounded-md border border-border bg-card">

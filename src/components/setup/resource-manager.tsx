@@ -390,8 +390,9 @@ export function ResourceManager({
               {editing?.row ? "Edit" : "Add"} {def.singular}
             </DialogTitle>
             <DialogDescription>
-              Saved changes apply to the next roster you generate or re-plan. Existing rosters are
-              not rewritten.
+              Saved changes apply to the next roster you generate or re-plan. Existing rosters&apos;
+              cells are not rewritten, but their issues and suggestions are re-checked against the
+              new data.
             </DialogDescription>
           </DialogHeader>
           <form
