@@ -349,6 +349,35 @@ async function main() {
   await go(page, `${BASE}/roster/2026-12`);
   await page.getByRole("tab", { name: "Brand" }).click();
   await page.getByLabel("Choose brand").selectOption({ label: "Nimbus Gadgets" });
+  // ---- P5.2 CSV export follows the view ---------------------------------------------------------
+  for (const [what, label, expectRows] of [
+    ["grid", "grid", 2],
+    ["coverage", "coverage", 3],
+    ["issues", "issues", null],
+  ] as const) {
+    const href = await page.getByLabel(`Export ${label} as CSV`).getAttribute("href");
+    check(href?.includes("kind=brand"), `export link carries the current view (${href})`);
+    const res = await page.request.get(`${BASE}${href}`);
+    check(res.status() === 200, `${what} export answers 200`);
+    check(
+      (res.headers()["content-type"] ?? "").startsWith("text/csv"),
+      `${what} export is text/csv`,
+    );
+    check(
+      (res.headers()["content-disposition"] ?? "").includes(`nimbus-gadgets-${what}.csv`),
+      `${what} export has a descriptive file name`,
+    );
+    const lines = (await res.text()).trim().split("\r\n");
+    if (expectRows !== null)
+      check(
+        lines.length === expectRows,
+        `${what} CSV has a header plus the view's rows (${lines.length})`,
+      );
+    log(
+      `CSV ${what} for Brand: Nimbus Gadgets -> ${lines.length} lines, header "${lines[0].slice(0, 60)}..."`,
+    );
+  }
+
   await page.getByRole("tab", { name: /^Backups/ }).click();
   const nimbusCs = page.locator('[data-backup="bp-nimbus-gadgets-cs"]');
   check(

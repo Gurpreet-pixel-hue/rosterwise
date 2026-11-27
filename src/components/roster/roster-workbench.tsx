@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  Download,
   GitCompare,
   PanelRightClose,
   PanelRightOpen,
@@ -352,6 +353,27 @@ export function RosterWorkbench({ data }: { data: RosterPageData }) {
             <div className="ml-auto flex items-center gap-2">
               <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
                 {shownEmployees.length} people · {bps.length} brand rules
+              </span>
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Download className="size-3" aria-hidden />
+                <span className="sr-only">Export this view as CSV:</span>
+                {(
+                  [
+                    ["grid", "Grid"],
+                    ["coverage", "Coverage"],
+                    ["issues", "Issues"],
+                  ] as const
+                ).map(([what, label]) => (
+                  <a
+                    key={what}
+                    href={`/roster/${month}/export?what=${what}&kind=${kind}&value=${encodeURIComponent(filterValue)}`}
+                    download
+                    aria-label={`Export ${label.toLowerCase()} as CSV`}
+                    className="rounded px-1 py-0.5 underline-offset-2 hover:bg-muted hover:text-foreground hover:underline"
+                  >
+                    {label}
+                  </a>
+                ))}
               </span>
               <Button
                 size="icon-sm"
